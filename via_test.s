@@ -44,10 +44,11 @@ reset:
   lda #$00            ; Load accumulator with empty byte
   ldx #$FF            ; Start with max X offset (This will sweep starting at zp+255)
 clear_zp_stack:
-  sta  $00,x          ; Clear zero page with X offset
-  sta $100,x          ; Clear stack with X offset
+  sta   $00,x         ; Clear zero page with X offset
+  sta $0100,x         ; Clear stack with X offset
   dex                 ; Decrement X
-  bpl clear_zp_stack  ; If X has not wrapped around (N=0), continue in loop
+  cpx #$FF            ; Compare X to 0xFF to detect wrap around
+  bne clear_zp_stack  ; If X has not wrapped around, continue in loop
   ; Reset Complete
 main:
   lda #$00
