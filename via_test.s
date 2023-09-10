@@ -43,12 +43,12 @@ halt:
 
 reset:
   sei                 ; Disable interrupts
-  ; Clear zero page and stack
   lda #$00            ; Load accumulator with empty byte
   ; Put VIA in safe state
   sta VIA_IER         ; Disable all interrupts
   sta VIA_PORTA       ; Clear PORTA
   sta VIA_PORTB       ; Clear PORTB
+  ; Clear zero page and stack
   ldx #$FF            ; Start with max X offset (This will sweep starting at zp+255)
 clear_zp_stack:
   sta   $00,x         ; Clear zero page with X offset
