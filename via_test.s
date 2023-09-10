@@ -45,6 +45,10 @@ reset:
   sei                 ; Disable interrupts
   ; Clear zero page and stack
   lda #$00            ; Load accumulator with empty byte
+  ; Put VIA in safe state
+  sta VIA_IER         ; Disable all interrupts
+  sta VIA_PORTA       ; Clear PORTA
+  sta VIA_PORTB       ; Clear PORTB
   ldx #$FF            ; Start with max X offset (This will sweep starting at zp+255)
 clear_zp_stack:
   sta   $00,x         ; Clear zero page with X offset
@@ -54,17 +58,13 @@ clear_zp_stack:
   bne clear_zp_stack  ; If X has not wrapped around, continue in loop
   ; Reset Complete
 main:
-  lda #$00
-  sta VIA_IER   ; Disable all interrupts
-  sta VIA_PORTA ; Clear PORTA
-  sta VIA_PORTB ; Clear PORTB
   lda #$FF
   sta VIA_DDRA  ; Set all PORTA pins as output
   sta VIA_DDRB  ; Set all PORTB pins as output
   lda #$ED
   sta VIA_PORTA ; Output a specific byte on PORTA
-  sta VIA_PORTB ; Output a specific byte on PORTA
-  jmp halt ; End of Program
+  sta VIA_PORTB ; Output a specific byte on PORTB
+  jmp halt      ; End of Program
 
 ; Vector Table
   .org NMIB_VECTOR
