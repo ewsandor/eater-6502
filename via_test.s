@@ -1,13 +1,15 @@
-; Walk through EEPROM padded with NOPs 255 times (~16 seconds at 1MHz), then halt
+; Write 0xED to PORTA & PORTB to verify basic VIA functionality
 
 
 
+; Starting address of EEPROM
+EEPROM_START_ADDRESS=$8000
 ; Non-Maskable Interrupt Vector Address
-NMIB_VECTOR=$fffa
+NMIB_VECTOR=$FFFA
 ; Reset Vector Address
-RESB_VECTOR=$fffc
+RESB_VECTOR=$FFFC
 ; Interrupt Vector Address
-IRQB_VECTOR=$fffe
+IRQB_VECTOR=$FFFE
 
 ; 6522 VIA Registers
 VIA_PORTB    = $6000 ; Output/Input Register B
@@ -27,8 +29,9 @@ VIA_IFR      = $600D ; Interrupt Flag Register
 VIA_IER      = $600E ; Interrupt Enable Registser
 VIA_PORT_NHS = $600F ; Output/Input Register A except no "Handshake"
 
-; Starting address of EEPROM
-EEPROM_START_ADDRESS=$8000
+
+
+
 ; Start of EEPROM
   .org EEPROM_START_ADDRESS
 
