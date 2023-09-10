@@ -21,7 +21,7 @@ halt:
   jmp halt ; Remain in infinite do-nothing loop
 
 main:
-  ldx $FF ; Init X with max value
+  ldx #$FF ; Init X with max value
 nop_loop:
   ; ... (nop) ...
   ; ... (nop) ...
