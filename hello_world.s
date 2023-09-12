@@ -45,7 +45,10 @@ resb:
 nmib:
 ; Interrupts not expected, fall through to HALT
 halt:
-  jmp halt ; Remain in infinite do-nothing loop
+  lda #$DD
+  sta VIA_PORTA
+halt_loop:
+  jmp halt_loop ; Remain in infinite do-nothing loop
 
 lcd_busy_wait:
   pha
@@ -81,7 +84,6 @@ lcd_write_instruction_nibble:
   sta VIA_PORTB ; Clear enable flag
   rts
 lcd_write_instruction: ; Write instruction stored in A register
-  jsr lcd_busy_wait
   pha ; Push instruction to stack since we will corrupt into nibble
   lsr ; Logical shift right 4-bits
   lsr
@@ -90,9 +92,10 @@ lcd_write_instruction: ; Write instruction stored in A register
   jsr lcd_write_instruction_nibble ; Write upper nibble
   pla ; Pull original instruction from stack
   pha ; Push original instruction to stack since we will corrupt into nibble
-  and $0F ; Mask the lower nibble
+  and #$0F ; Mask the lower nibble
   jsr lcd_write_instruction_nibble
   pla ; Pull original instruction from stack
+  jsr lcd_busy_wait
   rts
 
 lcd_put_char_nibble:
@@ -115,7 +118,7 @@ lcd_put_char:
   jsr lcd_put_char_nibble
   pla                     ; Pull original char from stack
   pha                     ; Push original char to stack since we will corrupt into nibbles
-  and $0F                 ; Mask lower nibble
+  and #$0F                ; Mask lower nibble
   jsr lcd_put_char_nibble
   pla                     ; Pull original char from stack
   rts
@@ -125,7 +128,7 @@ reset:
   cld                 ; Clear decimal mode
   lda #$00            ; Load accumulator with empty byte
   ; Put VIA in safe state
-  sta VIA_IER         ; Disable all interrupts
+  sta VIA_IER         ; Disable all VIA interrupts
   sta VIA_PORTA       ; Clear PORTA
   sta VIA_PORTB       ; Clear PORTB
   ; Clear zero page and stack
@@ -136,7 +139,10 @@ clear_zp_stack:
   dex                 ; Decrement X
   cpx #$FF            ; Compare X to 0xFF to detect wrap around
   bne clear_zp_stack  ; If X has not wrapped around, continue in loop
-  ;Init LCD
+  ; Init LEDs
+  lda #$FF
+  sta VIA_DDRA
+  ; Init LCD
   lda #$7F
   sta VIA_DDRB        ; Set first 7-bits (4-data + EN + RW + RS) of PORTB pins as output
   lda #$28            ; Set LCD in 4-bit mode with 2 lines
