@@ -29,10 +29,12 @@ VIA_IER      = $600E ; Interrupt Enable Registser
 VIA_PORT_NHS = $600F ; Output/Input Register A except no "Handshake"
 
 
-LCD_RS       = $10 ; LCD Register Select on PORT B bit 4
-LCD_RW       = $20 ; LCD Read/Write on PORT B bit 5
-LCD_EN       = $40 ; LCD Enable on PORT B bit 6
-LCD_BUSY     = $08 ; LCD Busy flag on PORT B bit 3
+LCD_RS        = $10 ; LCD Register Select on PORT B bit 4
+LCD_RW        = $20 ; LCD Read/Write on PORT B bit 5
+LCD_EN        = $40 ; LCD Enable on PORT B bit 6
+LCD_BUSY      = $08 ; LCD Busy flag on PORT B bit 3
+LCD_WRITE_DDR = $7F ; PORTB DDR mask when writing
+LCD_READ_DDR  = $70 ; PORTB DDR mask when writing
 
 
 
@@ -41,18 +43,9 @@ LCD_BUSY     = $08 ; LCD Busy flag on PORT B bit 3
 
 hello_world_string: .asciiz "Hello, World!"
 
-resb:
-nmib:
-; Interrupts not expected, fall through to HALT
-halt:
-  lda #$DD
-  sta VIA_PORTA
-halt_loop:
-  jmp halt_loop ; Remain in infinite do-nothing loop
-
 lcd_busy_wait:
   pha
-  lda #$70               ; Set lower nibble of PORTB a input
+  lda #LCD_READ_DDR      ; Set lower nibble of PORTB a input
   sta VIA_DDRB
   lda #LCD_RW            ; Prepare LCD for busy wait
   sta VIA_PORTB
@@ -70,7 +63,7 @@ lcd_busy_wait_loop:
   pla
   and #LCD_BUSY          ; Check if busy flag is set
   bne lcd_busy_wait_loop ; Remain in loop if busy flag is set
-  lda #$7F               ; Restore lower nibble of PORTB as output
+  lda #LCD_WRITE_DDR     ; Restore lower nibble of PORTB as output
   sta VIA_DDRB
   pla
   rts
@@ -84,6 +77,8 @@ lcd_write_instruction_nibble:
   sta VIA_PORTB ; Clear enable flag
   rts
 lcd_write_instruction: ; Write instruction stored in A register
+  jsr lcd_busy_wait
+lcd_write_first_instruction: ; Busy flag not valid before initialized in 4-bit mode
   pha ; Push instruction to stack since we will corrupt into nibble
   lsr ; Logical shift right 4-bits
   lsr
@@ -95,7 +90,6 @@ lcd_write_instruction: ; Write instruction stored in A register
   and #$0F ; Mask the lower nibble
   jsr lcd_write_instruction_nibble
   pla ; Pull original instruction from stack
-  jsr lcd_busy_wait
   rts
 
 lcd_put_char_nibble:
@@ -139,14 +133,16 @@ clear_zp_stack:
   dex                 ; Decrement X
   cpx #$FF            ; Compare X to 0xFF to detect wrap around
   bne clear_zp_stack  ; If X has not wrapped around, continue in loop
-  ; Init LEDs
-  lda #$FF
-  sta VIA_DDRA
+  ; Init LEDs on PORTA
+  lda #$FF            
+  sta VIA_DDRA        ; Set all PORTA pins as output
   ; Init LCD
-  lda #$7F
-  sta VIA_DDRB        ; Set first 7-bits (4-data + EN + RW + RS) of PORTB pins as output
+  lda #LCD_WRITE_DDR  ; Set first 7-bits (4-data + EN + RW + RS) of PORTB pins as output
+  sta VIA_DDRB        
+  lda #$02            ; Initialize 4-bit mode with single nibble
+  jsr lcd_write_instruction_nibble
   lda #$28            ; Set LCD in 4-bit mode with 2 lines
-  jsr lcd_write_instruction
+  jsr lcd_write_instruction ; Busy flag will not be valid before 4-bit mode is set
   lda #$01            ; Clear LCD
   jsr lcd_write_instruction
   lda #$02            ; Return LCD to home
@@ -161,12 +157,20 @@ main:
   ldx #$00      ; Init X as string index starting with index 0
 print_hello_world_char:
   lda hello_world_string,x   ; Load next char
-  beq halt_jmp               ; Halt when null-char is release
+  beq halt                   ; Halt when null-char is release
   jsr lcd_put_char           ; Call subroutin to put char to LCD
   inx                        ; Increment X to index next char
   jmp print_hello_world_char ; Handle new char
-halt_jmp:
-  jmp halt
+
+resb:
+nmib:
+; Interrupts not expected, fall through to HALT
+halt:
+  lda #$DD
+  sta VIA_PORTA
+halt_loop:
+  jmp halt_loop ; Remain in infinite do-nothing loop
+
 
 ; Vector Table
   .org NMIB_VECTOR
