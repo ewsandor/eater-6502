@@ -139,10 +139,10 @@ clear_zp_stack:
   ; Init LCD
   lda #LCD_WRITE_DDR  ; Set first 7-bits (4-data + EN + RW + RS) of PORTB pins as output
   sta VIA_DDRB        
-  lda #$02            ; Initialize 4-bit mode with single nibble
-  jsr lcd_write_instruction_nibble
+;  lda #$02            ; Initialize 4-bit mode with single nibble
+;  jsr lcd_write_instruction_nibble
   lda #$28            ; Set LCD in 4-bit mode with 2 lines
-  jsr lcd_write_instruction ; Busy flag will not be valid before 4-bit mode is set
+  jsr lcd_write_first_instruction ; Busy flag will not be valid before 4-bit mode is set
   lda #$01            ; Clear LCD
   jsr lcd_write_instruction
   lda #$02            ; Return LCD to home
