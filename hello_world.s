@@ -1,8 +1,11 @@
 ; "Hello, World program to verify ROM, RAM, VIA, and LCD are working as expected"
 
 
+; Fixed Addresses
 ; Starting address of EEPROM
 EEPROM_START_ADDRESS=$8000
+; Starting address of static data block
+STATIC_DATA_ADDRESS=$E000
 ; Non-Maskable Interrupt Vector Address
 NMIB_VECTOR=$FFFA
 ; Reset Vector Address
@@ -27,8 +30,18 @@ VIA_PCR      = $600C ; Peripheral Control Register
 VIA_IFR      = $600D ; Interrupt Flag Register
 VIA_IER      = $600E ; Interrupt Enable Registser
 VIA_PORT_NHS = $600F ; Output/Input Register A except no "Handshake"
+; 6522 VIA Constants
+VIA_IFR_CA2  = $01
+VIA_IFR_CA1  = $02
+VIA_IFR_SR   = $04
+VIA_IFR_CB2  = $08
+VIA_IFR_CB1  = $10
+VIA_IFR_T2   = $20
+VIA_IFR_T1   = $40
+VIA_IFR_ANY  = $80
 
 
+; LCD Constants
 LCD_RS        = $10 ; LCD Register Select on PORT B bit 4
 LCD_RW        = $20 ; LCD Read/Write on PORT B bit 5
 LCD_EN        = $40 ; LCD Enable on PORT B bit 6
@@ -37,11 +50,75 @@ LCD_WRITE_DDR = $7F ; PORTB DDR mask when writing
 LCD_READ_DDR  = $70 ; PORTB DDR mask when writing
 
 
+; System Variables
+DELAY_TICKS_L = $FE ; Delay Counter Low-Byte
+DELAY_TICKS_H = $FF ; Delay Counter High-Byte
+
+
 
 ; Start of EEPROM
   .org EEPROM_START_ADDRESS
 
-hello_world_string: .asciiz "Hello, World!"
+lcd_init:
+  lda #LCD_WRITE_DDR  ; Set first 7-bits (4-data + EN + RW + RS) of PORTB pins as output
+  sta VIA_DDRB
+  ; Wait 15ms after power-on
+  lda #$98  ; Store lower byte of 15ms
+  sta DELAY_TICKS_L
+  lda #$3A  ; Store upper byte of 15ms
+  sta DELAY_TICKS_H
+  jsr delay_ticks
+  lda #$03  ; Reset LCD using 8-bit mode as upper nibble (See HD44780U Figure 24)
+  jsr lcd_write_instruction_nibble
+  ; Wait 4.1ms after first write
+  lda #$04  ; Store lower byte of 4.1ms
+  sta DELAY_TICKS_L
+  lda #$10  ; Store upper byte of 4.1ms
+  sta DELAY_TICKS_H
+  jsr delay_ticks
+  lda #$03
+  jsr lcd_write_instruction_nibble
+  ; Wait 100us after second write
+  lda #$64  ; Store lower byte of 100us
+  sta DELAY_TICKS_L
+  lda #$00  ; Store upper byte of 100us
+  sta DELAY_TICKS_H
+  jsr delay_ticks
+  lda #$03
+  jsr lcd_write_instruction_nibble
+  ; Enter 4-bit mode and configure LCD
+  lda #$02                  ; Send single nibble to enter 4-bit mode
+  jsr lcd_write_instruction_nibble
+  lda #$28                  ; Set LCD in 4-bit mode with 2 lines
+  jsr lcd_write_instruction ; Busy flag will not be valid before 4-bit mode is set
+  lda #$01                  ; Clear LCD
+  jsr lcd_write_instruction
+  lda #$02                  ; Return LCD to home
+  jsr lcd_write_instruction
+  lda #$06                  ; Set LCD in incrementing mode
+  jsr lcd_write_instruction
+  lda #$0F                  ; Turn on LCD with blinking cursor
+  jsr lcd_write_instruction
+  rts
+
+
+delay_ticks:           ; Blocking delay (tick count set in DELAY_TICKS_L/H)
+  pha
+  lda VIA_ACR          ; Load current ACR state
+  and #$DF             ; Clear Timer-2 control bit (regular iterrupt)
+  sta VIA_ACR          ; Updte ACR state
+  lda DELAY_TICKS_L    ; Load lower-byte from memory
+  sta VIA_T2CL         ; Write Timer-2 counter's lower-byte
+  lda DELAY_TICKS_H    ; Load upper-byte from memory
+  sta VIA_T2CH         ; Write Timer-2 counter's upper-byte
+delay_ticks_wait:
+  lda VIA_IFR          ; Read VIA interrupt flag register
+  and #VIA_IFR_T2      ; Check if Timer-2 IFR flag is set
+  beq delay_ticks_wait ; Loop while interrupt flag is not set (status-reg zero-flag set)
+  lda VIA_T2CL         ; Clear interrupt flag
+  pla
+  rts
+
 
 lcd_busy_wait:
   pha
@@ -70,7 +147,7 @@ lcd_busy_wait_loop:
 
 lcd_write_instruction_nibble:
   pha           ; Push A since it will be modified with enable flag
-  sta VIA_PORTB ; Prepare nibbe on PORTB
+  sta VIA_PORTB ; Prepare nibble on PORTB
   ora #LCD_EN   ; Prepare nibble with enable flag
   sta VIA_PORTB ; Put nibble on PORTB
   pla           ; Restore A to clear enable
@@ -78,7 +155,6 @@ lcd_write_instruction_nibble:
   rts
 lcd_write_instruction: ; Write instruction stored in A register
   jsr lcd_busy_wait
-lcd_write_first_instruction: ; Busy flag not valid before initialized in 4-bit mode
   pha ; Push instruction to stack since we will corrupt into nibble
   lsr ; Logical shift right 4-bits
   lsr
@@ -120,11 +196,16 @@ lcd_put_char:
 reset:
   sei                 ; Disable interrupts
   cld                 ; Clear decimal mode
-  lda #$00            ; Load accumulator with empty byte
+  lda #$80             
+  sta VIA_IER         ; Disable all VIA interrupts (set mde)
+  lda #$00            
   ; Put VIA in safe state
-  sta VIA_IER         ; Disable all VIA interrupts
+  sta VIA_ACR         ; Clear ACR register
   sta VIA_PORTA       ; Clear PORTA
   sta VIA_PORTB       ; Clear PORTB
+  ; Init LEDs on PORTA
+  lda #$FF            
+  sta VIA_DDRA        ; Set all PORTA pins as output
   ; Clear zero page and stack
   ldx #$FF            ; Start with max X offset (This will sweep starting at zp+255)
 clear_zp_stack:
@@ -133,43 +214,35 @@ clear_zp_stack:
   dex                 ; Decrement X
   cpx #$FF            ; Compare X to 0xFF to detect wrap around
   bne clear_zp_stack  ; If X has not wrapped around, continue in loop
-  ; Init LEDs on PORTA
-  lda #$FF            
-  sta VIA_DDRA        ; Set all PORTA pins as output
   ; Init LCD
-  lda #LCD_WRITE_DDR  ; Set first 7-bits (4-data + EN + RW + RS) of PORTB pins as output
-  sta VIA_DDRB        
-;  lda #$02            ; Initialize 4-bit mode with single nibble
-;  jsr lcd_write_instruction_nibble
-  lda #$28            ; Set LCD in 4-bit mode with 2 lines
-  jsr lcd_write_first_instruction ; Busy flag will not be valid before 4-bit mode is set
-  lda #$01            ; Clear LCD
-  jsr lcd_write_instruction
-  lda #$02            ; Return LCD to home
-  jsr lcd_write_instruction
-  lda #$06            ; Set LCD in incrementing mode
-  jsr lcd_write_instruction
-  lda #$0F            ; Turn on LCD with blinking cursor
-  jsr lcd_write_instruction
-
+  jsr lcd_init        ; Initialize LCD
   ; Reset Complete
 main:
   ldx #$00      ; Init X as string index starting with index 0
 print_hello_world_char:
   lda hello_world_string,x   ; Load next char
   beq halt                   ; Halt when null-char is release
-  jsr lcd_put_char           ; Call subroutin to put char to LCD
+  jsr lcd_put_char           ; Call subroutine to output char to LCD
   inx                        ; Increment X to index next char
   jmp print_hello_world_char ; Handle new char
 
-resb:
+
+
+resb: ; Interrupts not expected, fall through to HALT Error
 nmib:
-; Interrupts not expected, fall through to HALT
+halt_error:
+  lda #$0E ; Output error code and halt
+  jmp halt_code
 halt:
-  lda #$DD
-  sta VIA_PORTA
+  lda #$0D ; Output done code and halt
+halt_code:
+  sei           ; Disable any further interrupts
+  sta VIA_PORTA ; Output code stored in A
 halt_loop:
   jmp halt_loop ; Remain in infinite do-nothing loop
+
+  .org STATIC_DATA_ADDRESS
+hello_world_string: .asciiz "Hello, World!"
 
 
 ; Vector Table
