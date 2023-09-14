@@ -39,6 +39,7 @@ VIA_IFR_CB1  = $10
 VIA_IFR_T2   = $20
 VIA_IFR_T1   = $40
 VIA_IFR_ANY  = $80
+VIA_IER_SET  = $80 ; IER set mode
 
 
 ; LCD Constants
@@ -51,6 +52,11 @@ LCD_READ_DDR  = $70 ; PORTB DDR mask when writing
 
 
 ; System Variables
+SYSTIME_F     = $F7 ; Frantional-seconds (1/256) portion of SYSTIME
+SYSTIME_0     = $F8 ; First (lowest) byte of SYSTIME in seconds
+SYSTIME_1     = $F9 ; Second byte of SYSTIME in seconds
+SYSTIME_2     = $FA ; Third byte of SYSTIME in seconds
+SYSTIME_3     = $FB ; Fourth (highest) byte of SYSTIME in seconds
 PUT_STRING_L  = $FC ; Put string Low-Byte
 PUT_STRING_H  = $FD ; Put string High-Byte
 DELAY_TICKS_L = $FE ; Delay Counter Low-Byte
@@ -148,12 +154,11 @@ lcd_busy_wait_loop:
   rts
 
 lcd_write_instruction_nibble:
-  pha           ; Push A since it will be modified with enable flag
   sta VIA_PORTB ; Prepare nibble on PORTB
   ora #LCD_EN   ; Prepare nibble with enable flag
   sta VIA_PORTB ; Put nibble on PORTB
-  pla           ; Restore A to clear enable
-  sta VIA_PORTB ; Clear enable flag
+  and #~(LCD_EN) ; Clear enable flag from A
+  sta VIA_PORTB  ; Clear enable flag
   rts
 lcd_write_instruction: ; Write instruction stored in A register
   jsr lcd_busy_wait
@@ -171,14 +176,12 @@ lcd_write_instruction: ; Write instruction stored in A register
   rts
 
 lcd_put_char_nibble:
-  pha           ; Push A since it will be modified with enable flag
-  ora #LCD_RS   ; Set RS bit to write to data register
-  sta VIA_PORTB ; Prepare nibbe on PORTB
-  ora #LCD_EN   ; Prepare nibble with enable flag
-  sta VIA_PORTB ; Put nibble on PORTB
-  pla           ; Restore A to clear enable
-  ora #LCD_RS   ; Set RS bit to write to data register
-  sta VIA_PORTB ; Clear enable flag
+  ora #LCD_RS             ; Set RS bit to write to data register
+  sta VIA_PORTB           ; Prepare nibbe on PORTB
+  ora #LCD_EN             ; Prepare nibble with enable flag
+  sta VIA_PORTB           ; Put nibble on PORTB
+  and #~(LCD_EN | LCD_RS) ; Clear enable flag and RS
+  sta VIA_PORTB           ; Clear enable flag and RS from PORTB
   rts
 
 lcd_clear:
@@ -236,14 +239,17 @@ lcd_put_byte:
 reset:
   sei                     ; Disable interrupts
   cld                     ; Clear decimal mode
-  lda #$80             
+  lda #$80
   sta VIA_IER             ; Disable all VIA interrupts (set mde)
   ; Init LEDs on PORTA
-  lda #$FF            
+  lda #$FF
   sta VIA_DDRA            ; Set all PORTA pins as output
-  lda #$00            
-  ; Put VIA in safe state
-  sta VIA_ACR             ; Clear ACR register
+  ; Configure VIA
+  lda #$40                ; Configure Timer-1 continous mode on ACR
+  sta VIA_ACR
+  lda #(VIA_IER_SET | VIA_IFR_T1) ; Configure VIA Timer-1 interrupt
+  sta VIA_IER
+  lda #$00
   sta VIA_PORTA           ; Clear PORTA
   sta VIA_PORTB           ; Clear PORTB
  ; Clear zero page and stack
@@ -256,47 +262,58 @@ clear_zp_stack_loop:
   bne clear_zp_stack_loop ; If X has not wrapped around, continue in loop
   ; Init LCD
   jsr lcd_init            ; Initialize LCD
+  ; Start VIA Timer-1 for 1/256 seconds ($0F42 ticks)
+  lda #$40             ; Interrupt triggers after N+2 clock cycles.  Fill lower byte as $40 instead of $42 to account for '+2'
+  sta VIA_T1CL         ; Write Timer-1 counter's lower-byte
+  lda #$0F
+  sta VIA_T1CH         ; Write Timer-1 counter's upper-byte.  This starts Timer-1 running
+  ; Enable interrupts
+  cli
   ; Reset Complete
 main:
-  ; Load delay timer for 1/256 seconds ($0F42)
-  lda #$42
-  sta DELAY_TICKS_L
-  lda #$0F
-  sta DELAY_TICKS_H
+
 loop:
   jsr lcd_home
-  lda $04
+  lda SYSTIME_3
   jsr lcd_put_byte
-  lda $03
+  lda SYSTIME_2
   jsr lcd_put_byte
   lda #' '          ; Add separator between 16-bits
   jsr lcd_put_char
-  lda $02
+  lda SYSTIME_1
   jsr lcd_put_byte
-  lda $01
+  lda SYSTIME_0
   jsr lcd_put_byte
   sta VIA_PORTA     ; Display seconds to LCD
   lda #'.'          ; Add separator for fractions of a second
   jsr lcd_put_char
-  lda $00
+  lda SYSTIME_F
   jsr lcd_put_byte
-
-  inc $00
-  bne inc_done ; If 0, rollover occurred, increment next byte
-  inc $01
-  bne inc_done
-  inc $02
-  bne inc_done
-  inc $03
-  bne inc_done
-  inc $04
-inc_done:
-  jsr delay_ticks
   jmp loop
-  jmp halt_error
 
-resb: ; Interrupt Handler
+irqb: ; Interrupt Handler
+  pha
+  lda VIA_IFR          ; Read VIA interrupt flag register
+  and #VIA_IFR_T1      ; Check if Timer-1 IFR flag is set
+  bne timer_1_irq      ; Branch to timer 1 IRQ handler if Timer-1 bit is set
+  jmp halt_error       ; Only timer interrupt should be enabled.  Halt with error if any other interrupt is triggered
 
+timer_1_irq:
+  lda VIA_T1CL         ; Clear T1 interrupt flag by reading 'T1C-L'
+  ; Increment SYSTIME data
+  inc SYSTIME_F
+  bne irqb_exit ; If 0, rollover occurred, increment next byte
+  inc SYSTIME_0
+  bne irqb_exit
+  inc SYSTIME_1
+  bne irqb_exit
+  inc SYSTIME_2
+  bne irqb_exit
+  inc SYSTIME_3
+
+irqb_exit:
+  pla
+  rti
 
 nmib: ; Non-Maskable Interrupts not expected, fall through to HALT Error
 halt_error:
@@ -318,4 +335,4 @@ halt_loop:
   .org RESB_VECTOR
   .word reset
   .org IRQB_VECTOR
-  .word resb
+  .word irqb
