@@ -1,4 +1,4 @@
-; Simple program to count time since bootup
+; Simple program to count time since bootup to verify interrupts
 
 
 ; Fixed Addresses
@@ -93,14 +93,14 @@ lcd_init:
   jsr lcd_write_instruction_nibble
   lda #$28                  ; Set LCD in 4-bit mode with 2 lines
   jsr lcd_write_instruction ; Busy flag will not be valid before 4-bit mode is set
-  lda #$01                  ; Clear LCD
-  jsr lcd_write_instruction
-  lda #$02                  ; Return LCD to home
-  jsr lcd_write_instruction
   lda #$06                  ; Set LCD in incrementing mode
   jsr lcd_write_instruction
-  lda #$0F                  ; Turn on LCD with blinking cursor
+  lda #$0C                  ; Turn on LCD without cursor
+; lda #$0E                  ; Turn on LCD with static cursor
+; lda #$0F                  ; Turn on LCD with blinking cursor
   jsr lcd_write_instruction
+  jsr lcd_clear             ; Clear LCD
+  jsr lcd_home              ; Return LCD cursor to home
   rts
 
 
@@ -180,6 +180,20 @@ lcd_put_char_nibble:
   ora #LCD_RS   ; Set RS bit to write to data register
   sta VIA_PORTB ; Clear enable flag
   rts
+
+lcd_clear:
+  pha
+  lda #$01                  ; Clear LCD
+  jsr lcd_write_instruction
+  pla
+  rts
+lcd_home:
+  pha
+  lda #$02                  ; Return LCD to home
+  jsr lcd_write_instruction
+  pla
+  rts
+
 lcd_put_char:
   jsr lcd_busy_wait
   pha                     ; Push original char to stack since we will corrupt into nibbles
@@ -200,8 +214,8 @@ lcd_put_nibble:
   and #$0F                  ; Mask to lower nibble
   cmp #$0A                  ; Compare with hex 'A'
   clc                       ; Clear the carry flag
-  bne lcd_put_nibble_finish ; Check if difference is negative (A register < hex 'A')
-  adc #('A'-'0')            ; Add offset between '0' character and 'A' character
+  bmi lcd_put_nibble_finish ; Check if difference is negative (A register < hex 'A')
+  adc #('A'-'0'-$A)         ; Add offset between '0' character and 'A' character
 lcd_put_nibble_finish:
   adc #'0'                  ; Add offset to '0' character
   jsr lcd_put_char
@@ -220,41 +234,76 @@ lcd_put_byte:
   rts
 
 reset:
-  sei                 ; Disable interrupts
-  cld                 ; Clear decimal mode
+  sei                     ; Disable interrupts
+  cld                     ; Clear decimal mode
   lda #$80             
-  sta VIA_IER         ; Disable all VIA interrupts (set mde)
-  lda #$00            
-  ; Put VIA in safe state
-  sta VIA_ACR         ; Clear ACR register
-  sta VIA_PORTA       ; Clear PORTA
-  sta VIA_PORTB       ; Clear PORTB
+  sta VIA_IER             ; Disable all VIA interrupts (set mde)
   ; Init LEDs on PORTA
   lda #$FF            
-  sta VIA_DDRA        ; Set all PORTA pins as output
-  ; Clear zero page and stack
-  ldx #$FF            ; Start with max X offset (This will sweep starting at zp+255)
-clear_zp_stack:
-  sta   $00,x         ; Clear zero page with X offset
-  sta $0100,x         ; Clear stack with X offset
-  dex                 ; Decrement X
-  cpx #$FF            ; Compare X to 0xFF to detect wrap around
-  bne clear_zp_stack  ; If X has not wrapped around, continue in loop
+  sta VIA_DDRA            ; Set all PORTA pins as output
+  lda #$00            
+  ; Put VIA in safe state
+  sta VIA_ACR             ; Clear ACR register
+  sta VIA_PORTA           ; Clear PORTA
+  sta VIA_PORTB           ; Clear PORTB
+ ; Clear zero page and stack
+  ldx #$FF                ; Start with max X offset (This will sweep starting at zp+255)
+clear_zp_stack_loop:
+  sta   $00,x             ; Clear zero page with X offset
+  sta $0100,x             ; Clear stack with X offset
+  dex                     ; Decrement X
+  cpx #$FF                ; Compare X to 0xFF to detect wrap around
+  bne clear_zp_stack_loop ; If X has not wrapped around, continue in loop
   ; Init LCD
-  jsr lcd_init        ; Initialize LCD
+  jsr lcd_init            ; Initialize LCD
   ; Reset Complete
 main:
-  jmp halt
+  ; Load delay timer for 1/256 seconds ($0F42)
+  lda #$42
+  sta DELAY_TICKS_L
+  lda #$0F
+  sta DELAY_TICKS_H
+loop:
+  jsr lcd_home
+  lda $04
+  jsr lcd_put_byte
+  lda $03
+  jsr lcd_put_byte
+  lda #' '          ; Add separator between 16-bits
+  jsr lcd_put_char
+  lda $02
+  jsr lcd_put_byte
+  lda $01
+  jsr lcd_put_byte
+  sta VIA_PORTA     ; Display seconds to LCD
+  lda #'.'          ; Add separator for fractions of a second
+  jsr lcd_put_char
+  lda $00
+  jsr lcd_put_byte
+
+  inc $00
+  bne inc_done ; If 0, rollover occurred, increment next byte
+  inc $01
+  bne inc_done
+  inc $02
+  bne inc_done
+  inc $03
+  bne inc_done
+  inc $04
+inc_done:
+  jsr delay_ticks
+  jmp loop
+  jmp halt_error
+
+resb: ; Interrupt Handler
 
 
-
-resb: ; Interrupts not expected, fall through to HALT Error
-nmib:
+nmib: ; Non-Maskable Interrupts not expected, fall through to HALT Error
 halt_error:
-  lda #$0E ; Output error code and halt
+  lda #$E0 ; Output error code and halt
   jmp halt_code
 halt:
-  lda #$0D ; Output done code and halt
+  lda #$D0 ; Output done code and halt
 halt_code:
   sei           ; Disable any further interrupts
   sta VIA_PORTA ; Output code stored in A
@@ -262,7 +311,6 @@ halt_loop:
   jmp halt_loop ; Remain in infinite do-nothing loop
 
   .org STATIC_DATA_ADDRESS
-string_test_msg: .asciiz "String Test"
 
 ; Vector Table
   .org NMIB_VECTOR
