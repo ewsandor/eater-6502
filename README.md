@@ -2,7 +2,7 @@
 This repository tracks software written for Ben Eater's 6502 Computer Kit
 
 ## Usage 
-Example build command: `vasm6502_oldstyle -Fbin -dotdir -c02 hello_world.s`
+Example build command: `vasm6502_oldstyle -Fbin -dotdir -wdc02 hello_world.s`
 
 Example EEPROM write command: `minipro -p AT28C256 -w a.out`
 
