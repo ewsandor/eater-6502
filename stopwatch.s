@@ -112,9 +112,6 @@ lcd_init:
 
 delay_ticks:           ; Blocking delay (tick count set in DELAY_TICKS_L/H)
   pha
-  lda VIA_ACR          ; Load current ACR state
-  and #$DF             ; Clear Timer-2 control bit (regular iterrupt)
-  sta VIA_ACR          ; Updte ACR state
   lda DELAY_TICKS_L    ; Load lower-byte from memory
   sta VIA_T2CL         ; Write Timer-2 counter's lower-byte
   lda DELAY_TICKS_H    ; Load upper-byte from memory
@@ -122,7 +119,7 @@ delay_ticks:           ; Blocking delay (tick count set in DELAY_TICKS_L/H)
 delay_ticks_wait:
   lda VIA_IFR          ; Read VIA interrupt flag register
   and #VIA_IFR_T2      ; Check if Timer-2 IFR flag is set
-  beq delay_ticks_wait ; Loop while interrupt flag is not set (status-reg zero-flag set)
+  beq delay_ticks_wait ; Loop while interrupt flag is not set (previous 'and' instruciton will result in zero)
   lda VIA_T2CL         ; Clear interrupt flag
   pla
   rts
@@ -175,15 +172,6 @@ lcd_write_instruction: ; Write instruction stored in A register
   pla ; Pull original instruction from stack
   rts
 
-lcd_put_char_nibble:
-  ora #LCD_RS             ; Set RS bit to write to data register
-  sta VIA_PORTB           ; Prepare nibbe on PORTB
-  ora #LCD_EN             ; Prepare nibble with enable flag
-  sta VIA_PORTB           ; Put nibble on PORTB
-  and #~(LCD_EN | LCD_RS) ; Clear enable flag and RS
-  sta VIA_PORTB           ; Clear enable flag and RS from PORTB
-  rts
-
 lcd_clear:
   pha
   lda #$01                  ; Clear LCD
@@ -197,6 +185,15 @@ lcd_home:
   pla
   rts
 
+
+lcd_put_char_nibble:
+  ora #LCD_RS             ; Set RS bit to write to data register
+  sta VIA_PORTB           ; Prepare nibbe on PORTB
+  ora #LCD_EN             ; Prepare nibble with enable flag
+  sta VIA_PORTB           ; Put nibble on PORTB
+  and #~(LCD_EN | LCD_RS) ; Clear enable flag and RS
+  sta VIA_PORTB           ; Clear enable flag and RS from PORTB
+  rts
 lcd_put_char:
   jsr lcd_busy_wait
   pha                     ; Push original char to stack since we will corrupt into nibbles
@@ -237,36 +234,38 @@ lcd_put_byte:
   rts
 
 reset:
-  sei                     ; Disable interrupts
-  cld                     ; Clear decimal mode
-  lda #$80
-  sta VIA_IER             ; Disable all VIA interrupts (set mde)
+  sei                             ; Disable interrupts
+  cld                             ; Clear decimal mode
   ; Init LEDs on PORTA
   lda #$FF
-  sta VIA_DDRA            ; Set all PORTA pins as output
+  sta VIA_DDRA                    ; Set all PORTA pins as output
   ; Configure VIA
-  lda #$40                ; Configure Timer-1 continous mode on ACR
+  ;   Timer-1 continous mode on ACR (no PB output)
+  ;   Timer-2 Timed Interrupt (no PB output)
+  ;   Shift-Register Disabled
+  ;   PORTA/PORTB latching disabled
+  lda #$40
   sta VIA_ACR
   lda #(VIA_IER_SET | VIA_IFR_T1) ; Configure VIA Timer-1 interrupt
   sta VIA_IER
   lda #$00
-  sta VIA_PORTA           ; Clear PORTA
-  sta VIA_PORTB           ; Clear PORTB
+  sta VIA_PORTA                   ; Clear PORTA
+  sta VIA_PORTB                   ; Clear PORTB
  ; Clear zero page and stack
-  ldx #$FF                ; Start with max X offset (This will sweep starting at zp+255)
+  ldx #$FF                        ; Start with max X offset (This will sweep starting at zp+255)
 clear_zp_stack_loop:
-  sta   $00,x             ; Clear zero page with X offset
-  sta $0100,x             ; Clear stack with X offset
-  dex                     ; Decrement X
-  cpx #$FF                ; Compare X to 0xFF to detect wrap around
-  bne clear_zp_stack_loop ; If X has not wrapped around, continue in loop
+  sta   $00,x                     ; Clear zero page with X offset
+  sta $0100,x                     ; Clear stack with X offset
+  dex                             ; Decrement X
+  cpx #$FF                        ; Compare X to 0xFF to detect wrap around
+  bne clear_zp_stack_loop         ; If X has not wrapped around, continue in loop
   ; Init LCD
-  jsr lcd_init            ; Initialize LCD
+  jsr lcd_init                    ; Initialize LCD
   ; Start VIA Timer-1 for 1/256 seconds ($0F42 ticks)
-  lda #$40             ; Interrupt triggers after N+2 clock cycles.  Fill lower byte as $40 instead of $42 to account for '+2'
-  sta VIA_T1CL         ; Write Timer-1 counter's lower-byte
+  lda #$40                        ; Interrupt triggers after N+2 clock cycles.  Fill lower byte as $40 instead of $42 to account for '+2'
+  sta VIA_T1CL                    ; Write Timer-1 counter's lower-byte
   lda #$0F
-  sta VIA_T1CH         ; Write Timer-1 counter's upper-byte.  This starts Timer-1 running
+  sta VIA_T1CH                    ; Write Timer-1 counter's upper-byte.  This starts Timer-1 running
   ; Enable interrupts
   cli
   ; Reset Complete
@@ -289,6 +288,7 @@ loop:
   jsr lcd_put_char
   lda SYSTIME_F
   jsr lcd_put_byte
+  wai               ; Wait for interrupt
   jmp loop
 
 irqb: ; Interrupt Handler
