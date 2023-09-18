@@ -58,6 +58,7 @@ ACIA_CLOCK_EXT   = $00 ; Use external baud clock
 ACIA_CLOCK_BAUD  = $10 ; Use baud clock generator
 ACIA_STOP_BITS_1 = $00
 ACIA_STOP_BITS_2 = $80
+ACIA_DTR_ENABLE  = $01
 
 
 ; LCD Constants
@@ -251,6 +252,7 @@ lcd_put_byte:
   jsr lcd_put_nibble ; Put lower nibble (lcd_put_nibble will mask $0F)
   rts
 
+; Reset Operations
 reset:
   sei                             ; Disable interrupts
   cld                             ; Clear decimal mode
@@ -284,9 +286,18 @@ clear_zp_stack_loop:
   sta VIA_T1CL                    ; Write Timer-1 counter's lower-byte
   lda #$0F
   sta VIA_T1CH                    ; Write Timer-1 counter's upper-byte.  This starts Timer-1 running
+  ; Init ACIA Peripheral
+  lda ACIA_DATA                   ; Clear Status Register receiver flags by reading data register
+  lda ACIA_STATUS                 ; Clear Status Register interrupt flag by reading the status register
+  lda #(ACIA_STOP_BITS_1 | ACIA_WL_8_BITS | ACIA_CLOCK_BAUD | ACIA_BAUD_9600) 
+  sta ACIA_CONTROL                ; Configure 9600-8-N-1 serial on the Control regiester
+  lda #ACIA_DTR_ENABLE 
+  sta ACIA_COMMAND                ; Set Data Terminal Ready on the command register to enable receive interrupts
   ; Enable interrupts
   cli
   ; Reset Complete
+
+; Start of Main Program
 main:
 
 loop:
