@@ -41,12 +41,22 @@ VIA_IFR_T1   = $40
 VIA_IFR_ANY  = $80
 VIA_IER_SET  = $80 ; IER set mode
 
+; LCD Constants
+LCD_RS        = $10 ; LCD Register Select on PORT B bit 4
+LCD_RW        = $20 ; LCD Read/Write on PORT B bit 5
+LCD_EN        = $40 ; LCD Enable on PORT B bit 6
+LCD_BUSY      = $08 ; LCD Busy flag on PORT B bit 3
+LCD_WRITE_DDR = $7F ; PORTB DDR mask when writing
+LCD_READ_DDR  = $70 ; PORTB DDR mask when writing
+
+
+
 ; 6551 ACIA Register
 ACIA_DATA        = $5000 ; Write transmit data/Read receiver data
 ACIA_STATUS      = $5001 ; Status register
 ACIA_COMMAND     = $5002 ; Command register
 ACIA_CONTROL     = $5003 ; Control register
-; 6551 ACI Constants
+; 6551 ACIA Constants
 ACIA_BAUD_115200 = $00
 ACIA_BAUD_9600   = $0E
 ACIA_BAUD_19200  = $0F
@@ -59,15 +69,10 @@ ACIA_CLOCK_BAUD  = $10 ; Use baud clock generator
 ACIA_STOP_BITS_1 = $00
 ACIA_STOP_BITS_2 = $80
 ACIA_DTR_ENABLE  = $01
+ACIA_RTSB_HIGH   = $00
+ACIA_RTSB_LOW    = $08
+ACIA_ECHO        = $10
 
-
-; LCD Constants
-LCD_RS        = $10 ; LCD Register Select on PORT B bit 4
-LCD_RW        = $20 ; LCD Read/Write on PORT B bit 5
-LCD_EN        = $40 ; LCD Enable on PORT B bit 6
-LCD_BUSY      = $08 ; LCD Busy flag on PORT B bit 3
-LCD_WRITE_DDR = $7F ; PORTB DDR mask when writing
-LCD_READ_DDR  = $70 ; PORTB DDR mask when writing
 
 
 ; System Variables
@@ -80,6 +85,7 @@ PUT_STRING_L  = $FC ; Put string Low-Byte
 PUT_STRING_H  = $FD ; Put string High-Byte
 DELAY_TICKS_L = $FE ; Delay Counter Low-Byte
 DELAY_TICKS_H = $FF ; Delay Counter High-Byte
+
 
 
 
@@ -252,6 +258,18 @@ lcd_put_byte:
   jsr lcd_put_nibble ; Put lower nibble (lcd_put_nibble will mask $0F)
   rts
 
+acia_put_char:
+  pha
+  sta ACIA_DATA
+  ; WDC 6551 TX register has a hardware bug.  Wait 1.042ms ($0412) for 9600 baud character
+  lda #$12
+  sta DELAY_TICKS_L
+  lda #$04
+  sta DELAY_TICKS_H
+  jsr delay_ticks
+  pla
+  rts
+
 ; Reset Operations
 reset:
   sei                             ; Disable interrupts
@@ -287,11 +305,10 @@ clear_zp_stack_loop:
   lda #$0F
   sta VIA_T1CH                    ; Write Timer-1 counter's upper-byte.  This starts Timer-1 running
   ; Init ACIA Peripheral
-  lda ACIA_DATA                   ; Clear Status Register receiver flags by reading data register
-  lda ACIA_STATUS                 ; Clear Status Register interrupt flag by reading the status register
+  sta ACIA_STATUS                 ; Write to chip to force a soft reset
   lda #(ACIA_STOP_BITS_1 | ACIA_WL_8_BITS | ACIA_CLOCK_BAUD | ACIA_BAUD_9600) 
   sta ACIA_CONTROL                ; Configure 9600-8-N-1 serial on the Control regiester
-  lda #ACIA_DTR_ENABLE 
+  lda #(ACIA_RTSB_LOW | ACIA_DTR_ENABLE)
   sta ACIA_COMMAND                ; Set Data Terminal Ready on the command register to enable receive interrupts
   ; Enable interrupts
   cli
@@ -299,25 +316,15 @@ clear_zp_stack_loop:
 
 ; Start of Main Program
 main:
-
+  ldx #$00      ; Init X as string index starting with index 0
+print_hello_world_char:
+  lda hello_world_string,x   ; Load next char
+  beq halt                   ; Halt when null-char is release
+  jsr lcd_put_char           ; Call subroutine to output char to LCD
+  jsr acia_put_char          ; Call subroutine to output char to ACIA
+  inx                        ; Increment X to index next char
+  jmp print_hello_world_char ; Handle new char
 loop:
-  jsr lcd_home
-  lda SYSTIME_3
-  jsr lcd_put_byte
-  lda SYSTIME_2
-  jsr lcd_put_byte
-  lda #' '          ; Add separator between 16-bits
-  jsr lcd_put_char
-  lda SYSTIME_1
-  jsr lcd_put_byte
-  lda SYSTIME_0
-  jsr lcd_put_byte
-  sta VIA_PORTA     ; Display seconds to LCD
-  lda #'.'          ; Add separator for fractions of a second
-  jsr lcd_put_char
-  lda SYSTIME_F
-  jsr lcd_put_byte
-  wai               ; Wait for interrupt
   jmp loop
 
 irqb: ; Interrupt Handler
@@ -357,6 +364,7 @@ halt_loop:
   jmp halt_loop ; Remain in infinite do-nothing loop
 
   .org STATIC_DATA_ADDRESS
+hello_world_string: .asciiz "Hello, World!"
 
 ; Vector Table
   .org NMIB_VECTOR
