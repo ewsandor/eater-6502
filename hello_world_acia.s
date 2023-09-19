@@ -324,8 +324,6 @@ print_hello_world_char:
   jsr acia_put_char          ; Call subroutine to output char to ACIA
   inx                        ; Increment X to index next char
   jmp print_hello_world_char ; Handle new char
-loop:
-  jmp loop
 
 irqb: ; Interrupt Handler
   pha
