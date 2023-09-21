@@ -666,12 +666,12 @@ wozmon_prhex:
   adc #$06              ; Add offset for letter.
 wozmon_echo:
   jsr put_char          ; BIT DSP 
+  rts                   ; Reorder to avoid unnessesary 'nops'
   nop                   ; BMI ECHO
   nop
   nop                   ; STA DSP
   nop
   nop
-  rts
 
 
 vector_table:
