@@ -119,14 +119,15 @@ WOZMON_IN   = $0200
 ; Start of EEPROM
   .org EEPROM_START_ADDRESS
 
-irqb: ; Interrupt Handler
+; Interrupt Handler
+irqb: 
   pha
   lda VIA_IFR          ; Read VIA interrupt flag register
   bmi via_irq          ; Jump to sub-handler if 'any' flag set
   lda ACIA_STATUS      ; Read ACIA status flag
   bmi acia_irq         ; Jump to sub-handler if 'IRQ' flag is set
-  jmp irq_exit
-  jmp halt_error       ; Halt with error code if interrupt was not processed
+  jmp irq_exit         ; For some reason stray IRQ is called.  Need to debug further
+;  jmp halt_error       ; Halt with error code if interrupt was not processed
 acia_irq:
   pha                   ; Save status register (cleared by 'and')
   and #(ACIA_STATUS_OVRN | ACIA_STATUS_FE | ACIA_STATUS_PE) ; Check for receiver errors
@@ -135,7 +136,7 @@ acia_irq:
   and #ACIA_STATUS_RDRF ; Check if receiver data register full flag is set
   bne acia_rdrf_irq     ; Jump to receiver data register full IRQ handler if non-zero
 ;  jmp halt_error       ; Halt with error if no interrup was processed
-  jmp irq_exit          ; For some reason IRQ is called twice for letters but not \n?  Need to debug this further...
+  jmp irq_exit          ; For some reason IRQ is called.  Need to debug this further...
 acia_error_irq:
   ora #$E0              ; Keep error flags in lower nibble
   jmp halt_code
@@ -145,7 +146,7 @@ acia_rdrf_irq:
   lda ACIA_DATA          ; Load the data register
   sta INPUT_BUFFER,x     ; Store read characte in input buffer
   inx                    ; Move to next input buffer index
-  lda #'0'               ; Prepare null-character
+  lda #$00               ; Prepare null-character
   sta INPUT_BUFFER,x     ; Put null character in next write index (Keep input-buffer a null terminated string)
   stx INPUT_BUFFER_W     ; Update next write index
   cpx INPUT_BUFFER_R     ; Compare to to the read index
