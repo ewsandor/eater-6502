@@ -5,15 +5,15 @@
 ; Starting address of EEPROM
 EEPROM_START_ADDRESS=$8000
 ; Starting address of static data block
-STATIC_DATA_ADDRESS=$E000
+STATIC_DATA_ADDRESS =$E000
 ; Starting address of WOZMON
-WOZMON_ADDRESS=$FF00
+WOZMON_ADDRESS      =$FF00
 ; Non-Maskable Interrupt Vector Address
-NMIB_VECTOR=$FFFA
+NMIB_VECTOR         =$FFFA
 ; Reset Vector Address
-RESB_VECTOR=$FFFC
+RESB_VECTOR         =$FFFC
 ; Interrupt Vector Address
-IRQB_VECTOR=$FFFE
+IRQB_VECTOR         =$FFFE
 
 ; 6522 VIA Registers
 VIA_PORTB    = $6000 ; Output/Input Register B (PORTB)
@@ -86,26 +86,29 @@ ACIA_STATUS_IRQ  = $80 ; Interrupt
 
 
 ; System Variables
-INPUT_BUFFER   = $0300 ; Base address of input buffer ($0300-$03FF)
-INPUT_BUFFER_R = $F5 ; Next input buffer read index
-INPUT_BUFFER_W = $F6 ; Next input buffer write index
-SYSTIME_F      = $F7 ; Frantional-seconds (1/256) portion of SYSTIME
-SYSTIME_0      = $F8 ; First (lowest) byte of SYSTIME in seconds
-SYSTIME_1      = $F9 ; Second byte of SYSTIME in seconds
-SYSTIME_2      = $FA ; Third byte of SYSTIME in seconds
-SYSTIME_3      = $FB ; Fourth (highest) byte of SYSTIME in seconds
-PUT_STRING_L   = $FC ; Put string Low-Byte
-PUT_STRING_H   = $FD ; Put string High-Byte
-DELAY_TICKS_L  = $FE ; Delay Counter Low-Byte
-DELAY_TICKS_H  = $FF ; Delay Counter High-Byte
+INPUT_BUFFER       = $0300 ; Base address of input buffer ($0300-$03FF)
+SYSTIME_F          = $F0 ; Frantional-seconds (1/256) portion of SYSTIME
+SYSTIME_0          = $F1 ; First (lowest) byte of SYSTIME in seconds
+SYSTIME_1          = $F2 ; Second byte of SYSTIME in seconds
+SYSTIME_2          = $F3 ; Third byte of SYSTIME in seconds
+SYSTIME_3          = $F4 ; Fourth (highest) byte of SYSTIME in seconds
+INPUT_BUFFER_R     = $F5 ; Next input buffer read index
+INPUT_BUFFER_W     = $F6 ; Next input buffer write index
+LCD_STATE_SYS      = $FB ; LCD system state register 
+PUT_STRING_L       = $FC ; Put string Low-Byte
+PUT_STRING_H       = $FD ; Put string High-Byte
+DELAY_TICKS_L      = $FE ; Delay Counter Low-Byte
+DELAY_TICKS_H      = $FF ; Delay Counter High-Byte
+
+LCD_STATE_SYS_LINE = $01
 
 ; WOZMON Variables
 WOZMON_XAML = $24
 WOZMON_XAMH = $25
 WOZMON_STL  = $26
-WOZMON_STH  = $26
-WOZMON_L    = $27
-WOZMON_H    = $28
+WOZMON_STH  = $27
+WOZMON_L    = $28
+WOZMON_H    = $29
 WOZMON_YSAV = $2A
 WOZMON_MODE = $2B
 WOZMON_IN   = $0200
@@ -122,6 +125,7 @@ irqb: ; Interrupt Handler
   bmi via_irq          ; Jump to sub-handler if 'any' flag set
   lda ACIA_STATUS      ; Read ACIA status flag
   bmi acia_irq         ; Jump to sub-handler if 'IRQ' flag is set
+  jmp irq_exit
   jmp halt_error       ; Halt with error code if interrupt was not processed
 acia_irq:
   pha                   ; Save status register (cleared by 'and')
@@ -130,8 +134,8 @@ acia_irq:
   pla                   ; Restore status register (undo 'and')
   and #ACIA_STATUS_RDRF ; Check if receiver data register full flag is set
   bne acia_rdrf_irq     ; Jump to receiver data register full IRQ handler if non-zero
-;  jmp halt_error        ; Halt with error if no interrup was processed
-  jmp irq_exit         ; For some reason IRQ is called twice for letters but not \n?  Need to debug this further...
+;  jmp halt_error       ; Halt with error if no interrup was processed
+  jmp irq_exit          ; For some reason IRQ is called twice for letters but not \n?  Need to debug this further...
 acia_error_irq:
   ora #$E0              ; Keep error flags in lower nibble
   jmp halt_code
@@ -144,8 +148,7 @@ acia_rdrf_irq:
   lda #'0'               ; Prepare null-character
   sta INPUT_BUFFER,x     ; Put null character in next write index (Keep input-buffer a null terminated string)
   stx INPUT_BUFFER_W     ; Update next write index
-  txa                    ; Move X (write index) back to A (convert to cpx?)
-  cmp INPUT_BUFFER_R     ; Compare to to the read index
+  cpx INPUT_BUFFER_R     ; Compare to to the read index
   bne acia_rdrf_irq_exit ; Skip to irq exit as long as read index != write inded (overflow)
   jmp halt_error         ; Halt with error on overflow
 acia_rdrf_irq_exit
@@ -217,9 +220,9 @@ lcd_init:
   jsr lcd_write_instruction ; Busy flag will not be valid before 4-bit mode is set
   lda #$06                  ; Set LCD in incrementing mode
   jsr lcd_write_instruction
-  lda #$0C                  ; Turn on LCD without cursor
+; lda #$0C                  ; Turn on LCD without cursor
 ; lda #$0E                  ; Turn on LCD with static cursor
-; lda #$0F                  ; Turn on LCD with blinking cursor
+  lda #$0F                  ; Turn on LCD with blinking cursor
   jsr lcd_write_instruction
   jsr lcd_clear             ; Clear LCD
   jsr lcd_home              ; Return LCD cursor to home
@@ -301,6 +304,31 @@ lcd_home:
   pla
   rts
 
+lcd_newline:
+  pha
+  lda LCD_STATE_SYS
+  eor #LCD_STATE_SYS_LINE ; Toggle line index
+  sta LCD_STATE_SYS
+  and #LCD_STATE_SYS_LINE ; Check if on line index 0
+  bne lcd_newline_1
+  lda #$80                ; Put cursor at position 0
+  jmp lcd_newline_apply
+lcd_newline_1:
+  lda #$A8                ; Put cursor at position 40
+lcd_newline_apply:
+  jsr lcd_write_instruction
+  pla
+  rts
+lcd_backspace:
+  pha
+  lda #$04                  ; Set LCD in decrementing mode
+  jsr lcd_write_instruction
+  lda #' '                  ; Write space and decrement
+  jsr lcd_put_char
+  lda #$06                  ; Set LCD in incrementing mode
+  jsr lcd_write_instruction
+  pla
+  rts
 
 lcd_put_char_nibble:
   ora #LCD_RS             ; Set RS bit to write to data register
@@ -312,17 +340,33 @@ lcd_put_char_nibble:
   rts
 lcd_put_char:
   jsr lcd_busy_wait
-  pha                     ; Push original char to stack since we will corrupt into nibbles
+  pha                     ; Push original char to stack since we will corrupt A
+  cmp #$0D                ; CR?
+  beq lcd_put_char_cr
+  cmp #$08                ; Backspace?
+  beq lcd_put_char_backspace
+  phx
+  tax
+  lda lcd_char_mapping,x
+  plx
+  pha                     ; Push mapped char into nibbles
   lsr                     ; Logical shift right 4-bits to get upper nibble
   lsr
   lsr
   lsr
   jsr lcd_put_char_nibble
-  pla                     ; Pull original char from stack
-  pha                     ; Push original char to stack since we will corrupt into nibbles
+  pla                     ; Pull mapped char from stack
   and #$0F                ; Mask lower nibble
   jsr lcd_put_char_nibble
   pla                     ; Pull original char from stack
+  rts
+lcd_put_char_cr:
+  jsr lcd_newline
+  pla
+  rts
+lcd_put_char_backspace:
+  jsr lcd_backspace
+  pla
   rts
 
 lcd_put_nibble:
@@ -363,12 +407,11 @@ acia_put_char:
 
 ; Blocking system call to get next char from input buffer
 get_char:
-  lda INPUT_BUFFER_R      ; Load next read index
-get_char_wait_input:
-  cmp INPUT_BUFFER_W      ; Compare to next write index (Replace with cpx?)
-  beq get_char_wait_input ; Loop until write index != read index
   phx
-  tax                     ; Transfer input index in A to X
+  ldx INPUT_BUFFER_R      ; Load next read index
+get_char_wait_input:
+  cpx INPUT_BUFFER_W      ; Compare to next write index
+  beq get_char_wait_input ; Loop until write index != read index
   lda INPUT_BUFFER, x     ; Read next char from input buffer
   plx
   inc INPUT_BUFFER_R      ; Increment read buffer index
@@ -376,8 +419,24 @@ get_char_wait_input:
 
 ; System call to put character to both LCD and ACIA
 put_char:
-  jsr lcd_put_char    ; Call subroutine to output char to LCD
-  jsr acia_put_char   ; Call subroutine to output char to ACIA
+  pha
+  sta ACIA_DATA
+  ; WDC 6551 TX register has a hardware bug.  Wait 1.042ms ($0412) for 9600 baud character
+  lda #$12
+  sta VIA_T2CL
+  lda #$04
+  sta VIA_T2CH
+  ; Call subroutine to output char to LCD while waiting for ACIA delay
+  pla
+  jsr lcd_put_char
+  pha
+  ; Wait for end of delay
+put_char_delay_loop:
+  lda VIA_IFR               ; Read VIA interrupt flag register
+  and #VIA_IFR_T2           ; Check if Timer-2 IFR flag is set
+  beq put_char_delay_loop   ; Loop while interrupt flag is not set (previous 'and' instruciton will result in zero)
+  lda VIA_T2CL              ; Clear interrupt flag
+  pla
   rts
 
 ; Reset Operations
@@ -404,9 +463,10 @@ reset:
  ; Clear zero page and stack
   ldx #$FF                        ; Start with max X offset (This will sweep starting at zp+255)
 clear_zp_stack_loop:
-  sta   $00,x                     ; Clear zero page with X offset
-  sta $0100,x                     ; Clear stack with X offset
+  sta          $00,x              ; Clear zero page with X offset
+  sta        $0100,x              ; Clear stack with X offset
   sta INPUT_BUFFER,x              ; Clear input buffer with x offset
+  sta    WOZMON_IN,x              ; Clear WOZMON Input buffer
   dex                             ; Decrement X
   cpx #$FF                        ; Compare X to 0xFF to detect wrap around
   bne clear_zp_stack_loop         ; If X has not wrapped around, continue in loop
@@ -431,12 +491,29 @@ clear_zp_stack_loop:
 
 static_data:
   .org STATIC_DATA_ADDRESS
+lcd_char_mapping:
+  .byte "????????????????"       ; $0X
+  .byte "????????????????"       ; $1X
+  .byte " !",$22,"#$%&'()*+,-./" ; $2X
+  .byte "0123456789:",$3B,"<=>?" ; $3X
+  .byte "@ABCDEFGHIJKLMNO"       ; $4X
+  .byte "PQRSTUVWXYZ[",$A4,"]^_" ; $5X
+  .byte "`abcdefghijklmno"       ; $6X
+  .byte "pqrstuvwxyz{|}~?"       ; $7X
+  .byte "????????????????"       ; $8X
+  .byte "????????????????"       ; $9X
+  .byte "????????????????"       ; $AX
+  .byte "????????????????"       ; $BX
+  .byte "????????????????"       ; $CX
+  .byte "????????????????"       ; $DX
+  .byte "????????????????"       ; $EX
+  .byte "????????????????"       ; $FX
 
 wozmon:
   .org WOZMON_ADDRESS
-  cld
-  cli
-  lda #$7F          ; Mask for DSP data direction register.
+  cld               ; Cleardecimal arithmetic mode
+  cli               ; Enable interrupts
+  ldy #$7F          ; Mask for DSP data direction register.
   nop               ; STY DSP
   nop
   nop
@@ -469,8 +546,7 @@ wozmon_nextchar:
   nop               ; BPL NEXTCHAR
   nop
   nop               ; LDA KB
-  nop
-  nop
+  nop               ; Single 'nop' removed to keep this implementation closely byte alligned with original (wozmon_setblock 'asl')
   sta WOZMON_IN, y
   jsr wozmon_echo  
   cmp #$0D          ; CR?
@@ -478,6 +554,8 @@ wozmon_nextchar:
   ldy #$FF          ; Reset text index.
   lda #$00          ; For XAM mode.
   tax
+wozmon_setblock:
+  asl               ; From Ben Eater's implementation since Apple I historically set bit-7 for chars unlike ASCII...
 wozmon_setstor:     ; Originally $FF40
   asl               ; Leaves $7B if setting STOR mode.
 wozmon_setmode:
@@ -490,7 +568,7 @@ wozmon_nextitem:
   beq wozmon_getline
   cmp #'.'           ; "."?
   bcc wozmon_blskip  ; Skip delimiter.
-  beq wozmon_setmode ; Set BLOCK XAM mode.
+  beq wozmon_setblock ; Set BLOCK XAM mode. ; Modified from Ben Eater's implementation
   cmp #':'           ; ":"?
   beq wozmon_setstor ; Yes, set STORE mode.
   cmp #'R'           ; "R"?
@@ -594,12 +672,6 @@ wozmon_echo:
   nop
   nop
   rts
-
-
-
-
-
-
 
 
 vector_table:
