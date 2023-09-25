@@ -380,3 +380,85 @@ put_char_delay_loop:
   lda VIA_T2CL              ; Clear interrupt flag
   pla
   rts
+
+; Borrowing Psuedo-random number generator from "Super Mario World" 
+;    Thanks to 'Retro Game Mechanics Explained' (https://www.youtube.com/watch?v=q15yNrJHOak)
+get_random_number:
+  phy
+  ldy #$01
+  jsr get_random_number_tick
+  dey
+  jsr get_random_number_tick
+  ply
+  rts
+get_random_number_tick:
+  lda SYS_RNG_SEED_L
+  asl
+  asl
+  sec
+  adc SYS_RNG_SEED_L
+  sta SYS_RNG_SEED_L
+  asl SYS_RNG_SEED_H
+  lda #$20
+  bit SYS_RNG_SEED_H
+  bcc get_random_number_tick_label1
+  beq get_random_number_tick_label3
+  bne get_random_number_tick_label2
+get_random_number_tick_label1:
+  bne get_random_number_tick_label3
+get_random_number_tick_label2:
+  inc SYS_RNG_SEED_H
+get_random_number_tick_label3:
+  lda SYS_RNG_SEED_H
+  eor SYS_RNG_SEED_L
+  sta SYS_RNG_OUTPUT_L,y
+  rts
+
+
+
+; Copy SYS_MEMCPY_SIZE bytes from SYS_MEMCPY_SRC to SYS_MEMCPY_DEST
+memcpy:
+  pha
+  clc ; Clear carry flag
+  ; Prepare working variable for sorce & destination addresses as well as size
+  ; Source
+  lda SYS_MEMCPY_SRC_L
+  sta SYSTEM_TEMP_0
+  lda SYS_MEMCPY_SRC_H 
+  sta SYSTEM_TEMP_1
+  ; Destination
+  lda SYS_MEMCPY_DEST_L
+  sta SYSTEM_TEMP_2
+  lda SYS_MEMCPY_DEST_H
+  sta SYSTEM_TEMP_3
+  ; Size
+  lda SYS_MEMCPY_SIZE_L
+  sta SYSTEM_TEMP_4
+  lda SYS_MEMCPY_SIZE_H
+  sta SYSTEM_TEMP_5
+  lda SYSTEM_TEMP_4      ; Check low-byte of size counter
+  bne memcpy_loop        ; Branch to copy if not zero
+  lda SYSTEM_TEMP_5      ; Check high-byte of size counter
+  beq memcpy_ret         ; Branch to return if both high/low bites of counter are zero
+memcpy_loop:
+  lda (SYSTEM_TEMP_0)    ; Load indirect address of source poiner
+  sta (SYSTEM_TEMP_2)    ; Store indirect address of destination poiner
+; Increment source pointer
+  inc SYSTEM_TEMP_0
+  bne memcpy_inc_dest    ; Continue to destionation if no-wrap around occured
+  inc SYSTEM_TEMP_1
+; Increment destination pointer
+memcpy_inc_dest:
+  inc SYSTEM_TEMP_2
+  bne memcpy_dec_counter ; Continue to destionation if no-wrap around occured
+  inc SYSTEM_TEMP_3
+memcpy_dec_counter:
+  dec SYSTEM_TEMP_4      ; Decrement low byte of size counter
+  cmp #$FF               ; Check for wrap-around
+  bne memcpy_loop        ; Continue if no wrap-around occured
+  dec SYSTEM_TEMP_5 
+  cmp #$FF
+  bne memcpy_loop
+memcpy_ret:
+  pla
+  rts
