@@ -125,6 +125,43 @@ halt_code:
 halt_loop:
   jmp halt_loop ; Remain in infinite do-nothing loop
 
+  .org PUT_CHAR
+  ; System call to put character to both LCD and ACIA
+put_char:
+  pha
+  sta ACIA_DATA
+  ; WDC 6551 TX register has a hardware bug.  Wait 1.042ms ($0412) for 9600 baud character
+  lda #$12
+  sta VIA_T2CL
+  lda #$04
+  sta VIA_T2CH
+  ; Call subroutine to output char to LCD while waiting for ACIA delay
+  pla
+  jsr lcd_put_char
+  pha
+  ; Wait for end of delay
+put_char_delay_loop:
+  lda VIA_IFR               ; Read VIA interrupt flag register
+  and #VIA_IFR_T2           ; Check if Timer-2 IFR flag is set
+  beq put_char_delay_loop   ; Loop while interrupt flag is not set (previous 'and' instruciton will result in zero)
+  lda VIA_T2CL              ; Clear interrupt flag
+  pla
+  rts
+
+
+  .org GET_RANDOM_NUMBER
+; Borrowing Psuedo-random number generator from "Super Mario World" 
+;    Thanks to 'Retro Game Mechanics Explained' (https://www.youtube.com/watch?v=q15yNrJHOak)
+get_random_number:
+  phy
+  ldy #$01
+  jsr get_random_number_tick
+  dey
+  jsr get_random_number_tick
+  ply
+  rts
+
+
 
   ; Miscellaneous System Subroutines
   .org SYSTEM_MISC
@@ -359,38 +396,6 @@ get_char_wait_input:
   inc INPUT_BUFFER_R      ; Increment read buffer index
   rts
 
-; System call to put character to both LCD and ACIA
-put_char:
-  pha
-  sta ACIA_DATA
-  ; WDC 6551 TX register has a hardware bug.  Wait 1.042ms ($0412) for 9600 baud character
-  lda #$12
-  sta VIA_T2CL
-  lda #$04
-  sta VIA_T2CH
-  ; Call subroutine to output char to LCD while waiting for ACIA delay
-  pla
-  jsr lcd_put_char
-  pha
-  ; Wait for end of delay
-put_char_delay_loop:
-  lda VIA_IFR               ; Read VIA interrupt flag register
-  and #VIA_IFR_T2           ; Check if Timer-2 IFR flag is set
-  beq put_char_delay_loop   ; Loop while interrupt flag is not set (previous 'and' instruciton will result in zero)
-  lda VIA_T2CL              ; Clear interrupt flag
-  pla
-  rts
-
-; Borrowing Psuedo-random number generator from "Super Mario World" 
-;    Thanks to 'Retro Game Mechanics Explained' (https://www.youtube.com/watch?v=q15yNrJHOak)
-get_random_number:
-  phy
-  ldy #$01
-  jsr get_random_number_tick
-  dey
-  jsr get_random_number_tick
-  ply
-  rts
 get_random_number_tick:
   lda SYS_RNG_SEED_L
   asl

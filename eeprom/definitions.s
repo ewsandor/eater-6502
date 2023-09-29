@@ -15,17 +15,21 @@ IRQB_VECTOR         =$FFFE
 
 ; System Subroutines
 ; System reset subroutine
-RESET       = $8100
-; System reset subroutine
-HALT_ERROR  = $8200
-; System reset subroutine
-HALT_DONE   = $8208
-; System reset subroutine
-HALT_CODE   = $8210
+RESET             = $8100
+; System halt with error subroutine
+HALT_ERROR        = $8200
+; System halt with done subroutine
+HALT_DONE         = $8208
+; System halt with code (register A) subroutine
+HALT_CODE         = $8210
+; System routig to put char in register A
+PUT_CHAR          = $8220
+; System utility to get a random number (output in A)
+GET_RANDOM_NUMBER = $9000
 ; Miscellaneous system subroutines
-SYSTEM_MISC = $D000
+SYSTEM_MISC       = $D000
 ; Starting address of WOZMON
-WOZMON      = $FF00
+WOZMON            = $FF00
 
 ; 6522 VIA Registers
 VIA_PORTB    = $6000 ; Output/Input Register B (PORTB)
