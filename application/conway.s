@@ -14,7 +14,7 @@ WORLD_WIDTH  = 5                            ; 1/8th world width (each bit is one
 WORLD_HEIGHT = 40                           ; Number of world rows
 WORLD_SIZE   = (WORLD_WIDTH * WORLD_HEIGHT)
 
-
+; Helper subroutines
   .org $0700
 clear_world_main:
   jsr clear_world
@@ -26,8 +26,17 @@ random_spawn_main:
   jsr random_spawn
   jmp WOZMON
 
-; Internal subroutines
   .org $0720
+draw_world_main:
+  lda #00
+  sta CURRENT_WORLD_L
+  lda #20
+  sta CURRENT_WORLD_H
+  jsr draw_world
+  jmp WOZMON
+
+; Internal subroutines
+  .org $0730
 draw_world:
   ldy #$00                ; Reset byte iterator
 draw_world_loop_i:
@@ -42,14 +51,23 @@ draw_world_loop_j:
   lda #' '                ; Print dead cell 
 draw_world_put_bit:
   jsr PUT_CHAR            ; Output cell
-  ; TODO check for and print newline
-draw_world_next_bit;
   lsr ITERATING_BIT       ; Shift iterating bit
   dex
   bne draw_world_loop_j
+  tya                     ; Transfer Y to A
+  and #$07                ; Mask lower 3 bits to check if multiple of 5 (ends in 0 or 5)
+  cmp #$00                ; Check if ends in 0
+  beq draw_world_carriage_return
+  cmp #$05                ; Check if ends in 5
+  bne draw_world_next_byte
+draw_world_carriage_return:
+  lda #$0D                ; Load CR character
+  jsr PUT_CHAR            ; Output newline
+draw_world_next_byte;
   iny
-  cmp #WORLD_SIZE
+  cpy #WORLD_SIZE
   bne draw_world_loop_i
+  rts
 
 
 clear_world:
@@ -86,3 +104,20 @@ random_spawn_next:
   cpx #WORLD_SIZE       ; Check if in world bounds
   bne random_spawn_loop_i
   rts
+
+
+  .org $0800
+main:
+  ; Init current world with 'Buffer A' address
+  lda #00
+  sta CURRENT_WORLD_L
+  lda #20
+  sta CURRENT_WORLD_H
+main_loop:
+  jsr draw_world ; Draw current world
+  ; TODO compute next frame
+  ; Set new world active (toggle address bit)
+  lda CURRENT_WORLD_H
+  eor #$01
+  sta CURRENT_WORLD_H
+  jmp main_loop
