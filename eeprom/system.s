@@ -81,16 +81,17 @@ reset:
   sta VIA_PORTB                   ; Clear PORTB
   sta INPUT_BUFFER_R              ; Reset input buffer read index
   sta INPUT_BUFFER_W              ; Reset input buffer write index
- ; Clear zero page and stack
+ ; Initialize zero page and stack
   ldx #$FF                        ; Start with max X offset (This will sweep starting at zp+255)
+  txs                             ; Initialize stack with max address
+  inx                             ; Increment X to set index $00
 clear_zp_stack_loop:
   sta          $00,x              ; Clear zero page with X offset
   sta        $0100,x              ; Clear stack with X offset
   sta INPUT_BUFFER,x              ; Clear input buffer with x offset
   sta    WOZMON_IN,x              ; Clear WOZMON Input buffer
-  dex                             ; Decrement X
-  cpx #$FF                        ; Compare X to 0xFF to detect wrap around
-  bne clear_zp_stack_loop         ; If X has not wrapped around, continue in loop
+  inx                             ; Increment X
+  bne clear_zp_stack_loop         ; If X has not wrapped around (not zero), continue in loop
   ; Init LCD
   jsr lcd_init                    ; Initialize LCD
   ; Start VIA Timer-1 for 1/256 seconds ($0F42 ticks)
