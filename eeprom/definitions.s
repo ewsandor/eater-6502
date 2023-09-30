@@ -30,6 +30,10 @@ GET_RANDOM_NUMBER = $9000
 SYSTEM_MISC       = $D000
 ; Starting address of WOZMON
 WOZMON            = $FF00
+WOZMON_GETLINE    = $FF1F
+WOZMON_PRBYTE     = $FFDC
+WOZMON_PRHEX      = $FFE5
+WOZMON_ECHO       = $FFEF
 
 ; 6522 VIA Registers
 VIA_PORTB    = $6000 ; Output/Input Register B (PORTB)
