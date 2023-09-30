@@ -1,16 +1,18 @@
+; Implementation to run Conway's Game of Life simulations
+
   include eeprom/definitions.s
 
 ; Run-time variabes
-CURR_WORLD_L    = $00
+CURR_WORLD_L    = $00   ; Pointer to active world buffer
 CURR_WORLD_H    = $01
-NEXT_WORLD_L    = $02
+NEXT_WORLD_L    = $02   ; Pointer to next world buffer
 NEXT_WORLD_H    = $03
 ITERATING_BIT   = $04   ; Temporary variable for iterating 
 REFRESH_TIME    = $05   ; Time of next refresh
 ; Config Variables
 SPAWN_WEIGHT    = $0600 ; Threshold to spawn cell
 REFRESH_PERIOD  = $0601 ; Time between refreshes in seconds
-GENERATIONS     = $0602 ; Time between refreshes in seconds
+GENERATIONS     = $0602 ; Number of generations to simulate
 CONFIG_FLAGS    = $0603 ; Configuration flags
 ; World Buffers
 WORLD_BUFFER_A  = $2000
@@ -25,7 +27,7 @@ DEFAULT_REFRESH_PERIOD    = 5   ; Refresh every 5 seconds
 DEFAULT_GENERATIONS       = $08 ; Draw 8 generations
 INFINITE_GENERATIONS_FLAG = $01 ; Inifite generation flag
 
-; Helper subroutines
+; Helper Routines
   .org $0700
 set_defaults_main:
   lda #DEFAULT_SPAWN_WEIGHT
@@ -61,11 +63,12 @@ draw_world_main:
 ; Internal subroutines
   .org $0750
 draw_world:
+  pha
   phx
   phy
   ldy #$00                ; Reset byte iterator
 draw_world_loop_i:
-; TODO need actual divide/remainder logic
+; TODO need actual divide/remainder logic to use other widths
   tya                     ; Transfer Y to A
   and #$07                ; Mask lower 3 bits to check if multiple 8
   cmp #$00                ; Check if ends in 0
@@ -76,10 +79,10 @@ draw_world_carriage_return:
 draw_world_next_byte:
   lda #$80                ; Set interating bit
   sta ITERATING_BIT       ; Store in temporary variable
-  ldx #$08                ; Iterate 8 bits using Y
+  ldx #$08                ; Iterate 8 bits using X
 draw_world_loop_j:
   lda ITERATING_BIT       ; Load current iterating bit
-  and (CURR_WORLD_L),y ; Compare with world byte
+  and (CURR_WORLD_L),y    ; Compare with world byte
   bne draw_world_put_cell
   lda #'.'                ; Print dead cell 
   bne draw_world_put_bit
@@ -95,6 +98,7 @@ draw_world_put_bit:
   bne draw_world_loop_i
   ply
   plx
+  pla
   rts
 
 
@@ -110,7 +114,7 @@ clear_world_loop:
   rts
   
 random_spawn:
-  ldx #$00                 ; Reset byte iterator
+  ldx #$00              ; Reset byte iterator
 random_spawn_loop_i:
   lda #$01              ; Set interating bit
   sta ITERATING_BIT     ; Store in temporary variable
@@ -121,7 +125,7 @@ random_spawn_loop_j:
   cmp SPAWN_WEIGHT
   bpl random_spawn_next ; If random number - weight is positive, do not spawn
   lda ITERATING_BIT     ; Load iterating bit from memory
-  ora WORLD_BUFFER_A,x  ; OR-in current mask in current world byte
+  ora WORLD_BUFFER_A,x  ; OR-in current mask in world buffer-A byte
   sta WORLD_BUFFER_A,x  ; Store new world byte in buffer A
   sta WORLD_BUFFER_B,x  ; Store new world byte in buffer B
 random_spawn_next:
@@ -136,7 +140,7 @@ random_spawn_next:
 
   .org $0800
 main:
-  ; Init current world with 'Buffer A' address
+  ; Init current world with 'Buffer A' address and next world with 'Buffer B'
   lda #$00
   sta CURR_WORLD_L
   lda #$20
@@ -148,9 +152,11 @@ main:
   ; Init refresh time
   lda SYSTIME_0
   clc
-  adc REFRESH_PERIOD
-  sta REFRESH_TIME
+  adc REFRESH_PERIOD ; Add period to current time
+  sta REFRESH_TIME   ; Use sum as timestamp of next refresh
+  ; Initialze generation counter
   ldy #$00 
+  ; Start main loop
 main_loop:
   ; Clear the output
   ldx #(WORLD_HEIGHT)
@@ -159,25 +165,28 @@ draw_clear_loop:
   jsr PUT_CHAR
   dex
   bne draw_clear_loop
+  ; Output generation
   lda #'G'
   jsr PUT_CHAR
-  tya 
-  jsr WOZMON_PRBYTE
+  tya               ; Y is counting generation, transfer to A
+  jsr WOZMON_PRBYTE ; TODO formalize 'native' put_byte call (avoid extra jsr at WOZMON_ECHO)
   ; Draw current world
   jsr draw_world
   ; TODO compute next frame
-  ; Set new world active (toggle address bit)
-  lda CURR_WORLD_H
-  sta NEXT_WORLD_H
-  eor #$01
-  sta CURR_WORLD_H
-  ; Increment counter
+  ; Swap active buffers
+  lda NEXT_WORLD_H ; Retrieve next high-byte
+  tax              ; Hold next high-byte in X
+  lda CURR_WORLD_H ; Retrieve current high-byte
+  sta NEXT_WORLD_H ; Store current high-byte as next high-byte
+  txa              ; Retrieve stored next high-byte
+  sta CURR_WORLD_H ; Store saved next high-byte as current byte
+  ; Increment genration counter
   iny
   lda CONFIG_FLAGS
   and #INFINITE_GENERATIONS_FLAG
-  bne refresh_time_wait ; Contine if infinite mode
-  cpy GENERATIONS
-  beq exit ; Else check if max generations reached
+  bne refresh_time_wait ; Always contine loop if infinite mode
+  cpy GENERATIONS       ; Compare if max generation is reached
+  beq exit              ; Exit when max generations reached
   ; Wait for refresh time
 refresh_time_wait:
   lda REFRESH_TIME
@@ -188,8 +197,11 @@ refresh_time_wait:
   sta REFRESH_TIME
   jmp main_loop
 exit:
+  ; CR to move to next line
   lda #$0D
   jsr PUT_CHAR
+  ; Output 'D' to note progrm is done
   lda #'D'
   jsr PUT_CHAR
+  ; Return to WOZMON
   jmp WOZMON_GETLINE
