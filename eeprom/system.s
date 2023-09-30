@@ -82,8 +82,8 @@ reset:
   sta INPUT_BUFFER_R              ; Reset input buffer read index
   sta INPUT_BUFFER_W              ; Reset input buffer write index
  ; Initialize zero page and stack
-  ldx #$FF                        ; Start with max X offset (This will sweep starting at zp+255)
-  txs                             ; Initialize stack with max address
+  ldx #$FF                        ; Load X with $FF to initialize SP
+  txs                             ; Initialize stack with max address $01FF
   inx                             ; Increment X to set index $00
 clear_zp_stack_loop:
   sta          $00,x              ; Clear zero page with X offset
