@@ -10,6 +10,7 @@ NEXT_WORLD_H    = $03
 ITERATING_BIT   = $04   ; Temporary variable for iterating 
 REFRESH_TIME    = $05   ; Time of next refresh
 NEIGHBOR_COUNT  = $06   ; Temporary variable to count neighboring cells
+BOOLEAN_FLAGS   = $07   ; Temporary boolean flags
 ; Config Variables
 SPAWN_WEIGHT    = $0600 ; Threshold to spawn cell
 REFRESH_PERIOD  = $0601 ; Time between refreshes in seconds
@@ -27,6 +28,7 @@ DEFAULT_SPAWN_WEIGHT      = 32  ; 1/4 (32/128) bits set
 DEFAULT_REFRESH_PERIOD    = 5   ; Refresh every 5 seconds
 DEFAULT_GENERATIONS       = $08 ; Draw 8 generations
 INFINITE_GENERATIONS_FLAG = $01 ; Inifite generation flag
+SKIP_CENTER_BIT           = $01 ; Skip counting the center bit for this byte when counting neighbors
 
 ; Helper Routines
   .org $0700
@@ -166,8 +168,8 @@ next_gen_loop_j:
   sta NEIGHBOR_COUNT      ; Reset neighbor counter
   ; Check bit to the left
   lda ITERATING_BIT       ; Load current iterating bit
-  cmp #$80
-  bne next_gen_prev_bit_same_byte
+  cmp #$80                ; Check if MSB is being checked
+  bne next_gen_left_bit_same_byte
   tya
   beq next_gen_center_bit ; Continue to centr bit if Y is zero
   dey                     ; Fetch previous world byte
@@ -179,17 +181,44 @@ next_gen_loop_j:
   jmp next_gen_center_bit
   ; Get bit from prevous byte
 next_gen_left_bit_same_byte:
-  asl 
-  and (CURR_WORLD_L),y    ; Compare to current bit
-  beq next_gen_center_bit ; Continue to center bit if not zero
+  asl                      ; Shift iterating bit left
+  and (CURR_WORLD_L),y     ; Compare to current bit
+  beq next_gen_center_bit  ; Continue to center bit if not zero
   ; bit-to-left is set, increment neighbor count
   inc NEIGHBOR_COUNT
 next_gen_center_bit:
-  ; TODO bit to the right
-  ; cmp (CURR_WORLD_L),y  ; TODO compute number of neighbors
-  ; sta (NEXT_WORLD_L),y  ; TODO update next world bit
+  lda BOOLEAN_FLAGS
+  and SKIP_CENTER_BIT
+  bne next_gen_right_bit
+  lda ITERATING_BIT
+  and (CURR_WORLD_L),y     ; Compare to current bit
+  beq next_gen_right_bit   ; Continue to center bit if not zero
+  inc NEIGHBOR_COUNT       ; center bit is set, increment neighbor count
+next_gen_right_bit:
+  ; Check bit to the left
+  lda ITERATING_BIT        ; Load current iterating bit
+  cmp #$01                 ; Check if MSB is being checked
+  bne next_gen_right_bit_same_byte
+  cpy #(WORLD_SIZE-1)      ; Check if last byte in world
+  beq next_gen_manage_fate
+  iny
+  lda (CURR_WORLD_L),y     ; Fetch next byte
+  dey
+  and #$80                 ; Check if MSB is set
+  beq next_gen_manage_fate ; Continue if bit isn't set
+  inc NEIGHBOR_COUNT       ; Increment neighbor count
+  jmp next_gen_manage_fate
+next_gen_right_bit_same_byte:
+  lsr                      ; Shift iterating bit left
+  and (CURR_WORLD_L),y     ; Compare to current bit
+  beq next_gen_manage_fate ; Continue to center bit if not zero
+  ; bit-to-right is set, increment neighbor count
+  inc NEIGHBOR_COUNT
+next_gen_manage_fate;
+  ; TODO manage cells fate based on neighbor count
+  ; sta (NEXT_WORLD_L),y   ; TODO update next world bit
 next_gen_next_bit:
-  lsr ITERATING_BIT       ; Shift iterating bit
+  lsr ITERATING_BIT        ; Shift iterating bit
   dex
   bne next_gen_loop_j
   iny
