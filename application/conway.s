@@ -9,6 +9,7 @@ NEXT_WORLD_L    = $02   ; Pointer to next world buffer
 NEXT_WORLD_H    = $03
 ITERATING_BIT   = $04   ; Temporary variable for iterating 
 REFRESH_TIME    = $05   ; Time of next refresh
+NEIGHBOR_COUNT  = $06   ; Temporary variable to count neighboring cells
 ; Config Variables
 SPAWN_WEIGHT    = $0600 ; Threshold to spawn cell
 REFRESH_PERIOD  = $0601 ; Time between refreshes in seconds
@@ -137,6 +138,67 @@ random_spawn_next:
   bne random_spawn_loop_i
   rts
 
+swap_world_buffer:
+  pha
+  phx
+  ; Swap active buffers
+  lda NEXT_WORLD_H ; Retrieve next high-byte
+  tax              ; Hold next high-byte in X
+  lda CURR_WORLD_H ; Retrieve current high-byte
+  sta NEXT_WORLD_H ; Store current high-byte as next high-byte
+  txa              ; Retrieve stored next high-byte
+  sta CURR_WORLD_H ; Store saved next high-byte as current byte
+  plx
+  pla
+  rts
+
+next_gen:
+  pha
+  phx
+  phy
+  ldy #$00                ; Reset byte iterator
+next_gen_loop_i:
+  lda #$80                ; Set interating bit
+  sta ITERATING_BIT       ; Store in temporary variable
+  ldx #$08                ; Iterate 8 bits using X
+next_gen_loop_j:
+  lda #$00
+  sta NEIGHBOR_COUNT      ; Reset neighbor counter
+  ; Check bit to the left
+  lda ITERATING_BIT       ; Load current iterating bit
+  cmp #$80
+  bne next_gen_prev_bit_same_byte
+  tya
+  beq next_gen_center_bit ; Continue to centr bit if Y is zero
+  dey                     ; Fetch previous world byte
+  lda (CURR_WORLD_L),y
+  iny
+  and #$01                ; Check if LSB is set
+  beq next_gen_center_bit ; Continue to center bit if not zero
+  inc NEIGHBOR_COUNT
+  jmp next_gen_center_bit
+  ; Get bit from prevous byte
+next_gen_left_bit_same_byte:
+  asl 
+  and (CURR_WORLD_L),y    ; Compare to current bit
+  beq next_gen_center_bit ; Continue to center bit if not zero
+  ; bit-to-left is set, increment neighbor count
+  inc NEIGHBOR_COUNT
+next_gen_center_bit:
+  ; TODO bit to the right
+  ; cmp (CURR_WORLD_L),y  ; TODO compute number of neighbors
+  ; sta (NEXT_WORLD_L),y  ; TODO update next world bit
+next_gen_next_bit:
+  lsr ITERATING_BIT       ; Shift iterating bit
+  dex
+  bne next_gen_loop_j
+  iny
+  cpy #WORLD_SIZE
+  bne next_gen_loop_i
+  ply
+  plx
+  pla
+  rts
 
   .org $0800
 main:
@@ -172,14 +234,8 @@ draw_clear_loop:
   jsr WOZMON_PRBYTE ; TODO formalize 'native' put_byte call (avoid extra jsr at WOZMON_ECHO)
   ; Draw current world
   jsr draw_world
-  ; TODO compute next frame
-  ; Swap active buffers
-  lda NEXT_WORLD_H ; Retrieve next high-byte
-  tax              ; Hold next high-byte in X
-  lda CURR_WORLD_H ; Retrieve current high-byte
-  sta NEXT_WORLD_H ; Store current high-byte as next high-byte
-  txa              ; Retrieve stored next high-byte
-  sta CURR_WORLD_H ; Store saved next high-byte as current byte
+  jsr next_gen
+  jsr swap_world_buffer
   ; Increment genration counter
   iny
   lda CONFIG_FLAGS
