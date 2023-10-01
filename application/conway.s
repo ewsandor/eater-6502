@@ -154,6 +154,70 @@ swap_world_buffer:
   pla
   rts
 
+  .org $0800
+main:
+  ; Init current world with 'Buffer A' address and next world with 'Buffer B'
+  lda #$00
+  sta CURR_WORLD_L
+  lda #$20
+  sta CURR_WORLD_H
+  lda #$00
+  sta NEXT_WORLD_L
+  lda #$21
+  sta NEXT_WORLD_H
+  ; Init refresh time
+  lda SYSTIME_0
+  clc
+  adc REFRESH_PERIOD ; Add period to current time
+  sta REFRESH_TIME   ; Use sum as timestamp of next refresh
+  ; Initialze generation counter
+  ldy #$00 
+  ; Start main loop
+main_loop:
+  ; Clear the output
+  ldx #(WORLD_HEIGHT)
+  lda #$0D
+draw_clear_loop:
+  jsr PUT_CHAR
+  dex
+  bne draw_clear_loop
+  ; Output generation
+  lda #'G'
+  jsr PUT_CHAR
+  tya               ; Y is counting generation, transfer to A
+  jsr WOZMON_PRBYTE ; TODO formalize 'native' put_byte call (avoid extra jsr at WOZMON_ECHO)
+  ; Draw current world
+  jsr draw_world
+  jsr next_gen
+  jsr swap_world_buffer
+  ; Increment genration counter
+  iny
+  lda CONFIG_FLAGS
+  and #INFINITE_GENERATIONS_FLAG
+  bne refresh_time_wait ; Always contine loop if infinite mode
+  cpy GENERATIONS       ; Compare if max generation is reached
+  beq exit              ; Exit when max generations reached
+  ; Wait for refresh time
+refresh_time_wait:
+  lda REFRESH_TIME
+  cmp SYSTIME_0
+  bpl refresh_time_wait
+  clc
+  adc REFRESH_PERIOD
+  sta REFRESH_TIME
+  jmp main_loop
+exit:
+  ; CR to move to next line
+  lda #$0D
+  jsr PUT_CHAR
+  ; Output 'D' to note progrm is done
+  lda #'D'
+  jsr PUT_CHAR
+  ; Return to WOZMON
+  jmp WOZMON_GETLINE
+
+; Main program miscelaneous subroutines
+  .org $0880
 next_gen:
   pha
   phx
@@ -229,64 +293,3 @@ next_gen_next_bit:
   pla
   rts
 
-  .org $0800
-main:
-  ; Init current world with 'Buffer A' address and next world with 'Buffer B'
-  lda #$00
-  sta CURR_WORLD_L
-  lda #$20
-  sta CURR_WORLD_H
-  lda #$00
-  sta NEXT_WORLD_L
-  lda #$21
-  sta NEXT_WORLD_H
-  ; Init refresh time
-  lda SYSTIME_0
-  clc
-  adc REFRESH_PERIOD ; Add period to current time
-  sta REFRESH_TIME   ; Use sum as timestamp of next refresh
-  ; Initialze generation counter
-  ldy #$00 
-  ; Start main loop
-main_loop:
-  ; Clear the output
-  ldx #(WORLD_HEIGHT)
-  lda #$0D
-draw_clear_loop:
-  jsr PUT_CHAR
-  dex
-  bne draw_clear_loop
-  ; Output generation
-  lda #'G'
-  jsr PUT_CHAR
-  tya               ; Y is counting generation, transfer to A
-  jsr WOZMON_PRBYTE ; TODO formalize 'native' put_byte call (avoid extra jsr at WOZMON_ECHO)
-  ; Draw current world
-  jsr draw_world
-  jsr next_gen
-  jsr swap_world_buffer
-  ; Increment genration counter
-  iny
-  lda CONFIG_FLAGS
-  and #INFINITE_GENERATIONS_FLAG
-  bne refresh_time_wait ; Always contine loop if infinite mode
-  cpy GENERATIONS       ; Compare if max generation is reached
-  beq exit              ; Exit when max generations reached
-  ; Wait for refresh time
-refresh_time_wait:
-  lda REFRESH_TIME
-  cmp SYSTIME_0
-  bpl refresh_time_wait
-  clc
-  adc REFRESH_PERIOD
-  sta REFRESH_TIME
-  jmp main_loop
-exit:
-  ; CR to move to next line
-  lda #$0D
-  jsr PUT_CHAR
-  ; Output 'D' to note progrm is done
-  lda #'D'
-  jsr PUT_CHAR
-  ; Return to WOZMON
-  jmp WOZMON_GETLINE
