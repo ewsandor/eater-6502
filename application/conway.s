@@ -217,19 +217,82 @@ exit:
   jmp WOZMON_GETLINE
 
 ; Main program miscelaneous subroutines
-  .org $0880
+  .org $0860
 next_gen:
   pha
   phx
   phy
-  ldy #$00                ; Reset byte iterator
+  ldy #$00                 ; Reset byte iterator
 next_gen_loop_i:
-  lda #$80                ; Set interating bit
-  sta ITERATING_BIT       ; Store in temporary variable
-  ldx #$08                ; Iterate 8 bits using X
+  lda #$80                 ; Set interating bit
+  sta ITERATING_BIT        ; Store in temporary variable
+  ldx #$08                 ; Iterate 8 bits using X
 next_gen_loop_j:
   lda #$00
-  sta NEIGHBOR_COUNT      ; Reset neighbor counter
+  sta NEIGHBOR_COUNT       ; Reset neighbor counter
+  ; Check current row neighbors
+  lda BOOLEAN_FLAGS
+  ora #SKIP_CENTER_BIT     ; Set flag to skip center bit
+  sta BOOLEAN_FLAGS
+  jsr next_gen_count_byte_neighbors
+  lda BOOLEAN_FLAGS
+  and #~(SKIP_CENTER_BIT)  ; Clear flag to skip center bit
+  sta BOOLEAN_FLAGS
+  tya
+  sec
+  sbc #WORLD_WIDTH         ; Subtract one width to go to previous row
+  bcc next_gen_next_row    ; Continue if carry flag was cleared
+  phy
+  tay
+  jsr next_gen_count_byte_neighbors
+  ply
+next_gen_next_row:
+  tya
+  clc
+  adc #WORLD_WIDTH         ; Add one width to go to next row
+  cmp #WORLD_SIZE
+  bcs next_gen_manage_fate ; Continue if next row is beyond world size
+  phy
+  tay
+  jsr next_gen_count_byte_neighbors
+  ply
+next_gen_manage_fate;
+  lda NEIGHBOR_COUNT
+  cmp #$02                 ; Check if 2 or more neighbors.  Any live cell with fewer than two live neighbours dies, as if by underpopulation.
+  bpl next_gen_2_or_more_neighbors
+  ; Fewer than 2 neighbors
+  jmp next_gen_kill_cell
+next_gen_2_or_more_neighbors:
+  cmp #03                  ; Check if exactly 3 neighbors.  Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
+  bne next_gen_2_or_4_or_more_neighbors
+  ; exactly 3 neighbors
+  lda ITERATING_BIT
+  ora (NEXT_WORLD_L),y     ; OR-in iterating bit
+  sta (NEXT_WORLD_L),y     ; Store updated byte 
+  jmp next_gen_next_bit
+next_gen_2_or_4_or_more_neighbors:
+  cmp #04                  ; Check if 4 or more neighbors.
+  bmi next_gen_next_bit    ; If 2 neighbors, continue to next gen.  Any live cell with two or three live neighbours lives on to the next generation.
+next_gen_kill_cell:
+  ; Any live cell with more than three live neighbours dies, as if by overpopulation.
+  clc
+  lda ITERATING_BIT        ; Load iterating bit
+  eor #$FF                 ; Exclusive or $FF to invert bits
+  and (NEXT_WORLD_L),y     ; Clear bit from next generation
+  sta (NEXT_WORLD_L),y     ; Store updated byte
+next_gen_next_bit:
+  lsr ITERATING_BIT        ; Shift iterating bit
+  dex
+  bne next_gen_loop_j
+  iny
+  cpy #WORLD_SIZE
+  bne next_gen_loop_i
+  ply
+  plx
+  pla
+  rts
+
+next_gen_count_byte_neighbors:
   ; Check bit to the left
   lda ITERATING_BIT       ; Load current iterating bit
   cmp #$80                ; Check if MSB is being checked
@@ -264,32 +327,19 @@ next_gen_right_bit:
   cmp #$01                 ; Check if MSB is being checked
   bne next_gen_right_bit_same_byte
   cpy #(WORLD_SIZE-1)      ; Check if last byte in world
-  beq next_gen_manage_fate
+  beq next_gen_count_byte_neighbors_exit
   iny
   lda (CURR_WORLD_L),y     ; Fetch next byte
   dey
   and #$80                 ; Check if MSB is set
-  beq next_gen_manage_fate ; Continue if bit isn't set
+  beq next_gen_count_byte_neighbors_exit ; Continue if bit isn't set
   inc NEIGHBOR_COUNT       ; Increment neighbor count
-  jmp next_gen_manage_fate
+  jmp next_gen_count_byte_neighbors_exit
 next_gen_right_bit_same_byte:
   lsr                      ; Shift iterating bit left
   and (CURR_WORLD_L),y     ; Compare to current bit
-  beq next_gen_manage_fate ; Continue to center bit if not zero
+  beq next_gen_count_byte_neighbors_exit ; Continue to center bit if not zero
   ; bit-to-right is set, increment neighbor count
   inc NEIGHBOR_COUNT
-next_gen_manage_fate;
-  ; TODO manage cells fate based on neighbor count
-  ; sta (NEXT_WORLD_L),y   ; TODO update next world bit
-next_gen_next_bit:
-  lsr ITERATING_BIT        ; Shift iterating bit
-  dex
-  bne next_gen_loop_j
-  iny
-  cpy #WORLD_SIZE
-  bne next_gen_loop_i
-  ply
-  plx
-  pla
+next_gen_count_byte_neighbors_exit
   rts
-
