@@ -64,11 +64,21 @@ random_spawn_main:
 
   .org $0750
 draw_world_main:
-  lda #$00
-  sta CURR_WORLD_L
-  lda #$20
-  sta CURR_WORLD_H
   jsr draw_world
+  jmp WOZMON_GETLINE
+
+  .org $0760
+copy_world_main:
+  lda CURR_WORLD_L
+  sta SYS_MEMCPY_SRC_L
+  lda CURR_WORLD_H
+  sta SYS_MEMCPY_SRC_H
+  lda NEXT_WORLD_L
+  sta SYS_MEMCPY_DEST_L
+  lda NEXT_WORLD_H
+  sta SYS_MEMCPY_DEST_H
+  ldy #WORLD_SIZE
+  jsr MEMCPY
   jmp WOZMON_GETLINE
 
   .org $0800

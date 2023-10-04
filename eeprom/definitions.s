@@ -24,6 +24,8 @@ HALT_DONE         = $8208
 HALT_CODE         = $8210
 ; System routig to put char in register A
 PUT_CHAR          = $8220
+; Copy Y bytes from SYS_MEMCPY_SRC to SYS_MEMCPY_DEST.  Y==0 copies 256 bytes
+MEMCPY            = $8240
 ; System utility to get a random number (output in A)
 GET_RANDOM_NUMBER = $9000
 ; Miscellaneous system subroutines

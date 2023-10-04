@@ -149,6 +149,27 @@ put_char_delay_loop:
   pla
   rts
 
+  .org MEMCPY
+memcpy:
+  pha
+  phy
+  lda SYSTEM_TEMP_0
+  pha
+  sty SYSTEM_TEMP_0
+  ldy #$00
+memcpy_loop:
+  lda (SYS_MEMCPY_SRC_L),y
+  sta (SYS_MEMCPY_DEST_L),y
+  iny
+  cpy SYSTEM_TEMP_0
+  bne memcpy_loop
+memcpy_return:
+  pla
+  sta SYSTEM_TEMP_0
+  ply
+  pla
+  rts
+
 
   .org GET_RANDOM_NUMBER
 ; Borrowing Psuedo-random number generator from "Super Mario World" 
@@ -420,10 +441,8 @@ get_random_number_tick_label3:
   sta SYS_RNG_OUTPUT_L,y
   rts
 
-
-
 ; Copy SYS_MEMCPY_SIZE bytes from SYS_MEMCPY_SRC to SYS_MEMCPY_DEST
-memcpy:
+memcpy_large:
   pha
   clc ; Clear carry flag
   ; Prepare working variable for sorce & destination addresses as well as size
@@ -443,28 +462,28 @@ memcpy:
   lda SYS_MEMCPY_SIZE_H
   sta SYSTEM_TEMP_5
   lda SYSTEM_TEMP_4      ; Check low-byte of size counter
-  bne memcpy_loop        ; Branch to copy if not zero
+  bne memcpy_large_loop        ; Branch to copy if not zero
   lda SYSTEM_TEMP_5      ; Check high-byte of size counter
-  beq memcpy_ret         ; Branch to return if both high/low bites of counter are zero
-memcpy_loop:
+  beq memcpy_large_ret         ; Branch to return if both high/low bites of counter are zero
+memcpy_large_loop:
   lda (SYSTEM_TEMP_0)    ; Load indirect address of source poiner
   sta (SYSTEM_TEMP_2)    ; Store indirect address of destination poiner
 ; Increment source pointer
   inc SYSTEM_TEMP_0
-  bne memcpy_inc_dest    ; Continue to destionation if no-wrap around occured
+  bne memcpy_large_inc_dest    ; Continue to destionation if no-wrap around occured
   inc SYSTEM_TEMP_1
 ; Increment destination pointer
-memcpy_inc_dest:
+memcpy_large_inc_dest:
   inc SYSTEM_TEMP_2
-  bne memcpy_dec_counter ; Continue to destionation if no-wrap around occured
+  bne memcpy_large_dec_counter ; Continue to destionation if no-wrap around occured
   inc SYSTEM_TEMP_3
-memcpy_dec_counter:
+memcpy_large_dec_counter:
   dec SYSTEM_TEMP_4      ; Decrement low byte of size counter
   cmp #$FF               ; Check for wrap-around
-  bne memcpy_loop        ; Continue if no wrap-around occured
+  bne memcpy_large_loop        ; Continue if no wrap-around occured
   dec SYSTEM_TEMP_5 
   cmp #$FF
-  bne memcpy_loop
-memcpy_ret:
+  bne memcpy_large_loop
+memcpy_large_ret:
   pla
   rts
