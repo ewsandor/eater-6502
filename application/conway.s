@@ -49,6 +49,10 @@ set_defaults_main:
   sta CURR_WORLD_H
   lda #$21
   sta NEXT_WORLD_H
+  lda SYSTIME_F
+  sta SYS_RNG_SEED_L
+  lda SYSTIME_0
+  sta SYS_RNG_SEED_H
   jmp WOZMON_GETLINE
 
   .org $0730
@@ -119,7 +123,7 @@ draw_clear_loop:
 refresh_time_wait:
   lda REFRESH_TIME
   cmp SYSTIME_0
-  bpl refresh_time_wait
+  bcs refresh_time_wait
   clc
   adc REFRESH_PERIOD
   sta REFRESH_TIME
