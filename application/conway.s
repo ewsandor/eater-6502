@@ -258,28 +258,22 @@ next_gen_next_row:
   ply
 next_gen_manage_fate;
   lda NEIGHBOR_COUNT
-  cmp #$02                 ; Check if 2 or more neighbors.  Any live cell with fewer than two live neighbours dies, as if by underpopulation.
-  bpl next_gen_2_or_more_neighbors
-  ; Fewer than 2 neighbors
-  jmp next_gen_kill_cell
-next_gen_2_or_more_neighbors:
-  cmp #03                  ; Check if exactly 3 neighbors.  Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
-  bne next_gen_2_or_4_or_more_neighbors
-  ; exactly 3 neighbors
-  lda ITERATING_BIT
-  ora (NEXT_WORLD_L),y     ; OR-in iterating bit
-  sta (NEXT_WORLD_L),y     ; Store updated byte 
-  jmp next_gen_next_bit
-next_gen_2_or_4_or_more_neighbors:
-  cmp #04                  ; Check if 4 or more neighbors.
-  bmi next_gen_next_bit    ; If 2 neighbors, continue to next gen.  Any live cell with two or three live neighbours lives on to the next generation.
-next_gen_kill_cell:
+  cmp #02                  ; Check if exactly 2 neighbors.
+  beq next_gen_next_bit    ; Any live cell with two or three live neighbours lives on to the next generation.
+  cmp #03                  ; Check if exactly 3 neighbors.  
+  beq next_gen_spawn_cell  ; Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
+  ; Any live cell with fewer than two live neighbours dies, as if by underpopulation.
   ; Any live cell with more than three live neighbours dies, as if by overpopulation.
-  clc
+  ; Kill cell
   lda ITERATING_BIT        ; Load iterating bit
   eor #$FF                 ; Exclusive or $FF to invert bits
   and (NEXT_WORLD_L),y     ; Clear bit from next generation
   sta (NEXT_WORLD_L),y     ; Store updated byte
+  jmp next_gen_next_bit
+next_gen_spawn_cell:
+  lda ITERATING_BIT
+  ora (NEXT_WORLD_L),y     ; OR-in iterating bit
+  sta (NEXT_WORLD_L),y     ; Store updated byte 
 next_gen_next_bit:
   lsr ITERATING_BIT        ; Shift iterating bit
   dex
