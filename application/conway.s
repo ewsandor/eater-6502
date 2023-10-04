@@ -41,20 +41,28 @@ set_defaults_main:
   sta GENERATIONS
   lda #$00
   sta CONFIG_FLAGS
+  ; Init current world with 'Buffer A' address and next world with 'Buffer B'
+  lda #$00
+  sta CURR_WORLD_L
+  sta NEXT_WORLD_L
+  lda #$20
+  sta CURR_WORLD_H
+  lda #$21
+  sta NEXT_WORLD_H
   jmp WOZMON_GETLINE
 
-  .org $0720
+  .org $0730
 clear_world_main:
   jsr clear_world
   jmp WOZMON_GETLINE
 
-  .org $0730
+  .org $0740
 random_spawn_main:
   jsr clear_world
   jsr random_spawn
   jmp WOZMON_GETLINE
 
-  .org $0740
+  .org $0750
 draw_world_main:
   lda #$00
   sta CURR_WORLD_L
@@ -63,109 +71,9 @@ draw_world_main:
   jsr draw_world
   jmp WOZMON_GETLINE
 
-; Internal subroutines
-  .org $0750
-draw_world:
-  pha
-  phx
-  phy
-  ldy #$00                ; Reset byte iterator
-draw_world_loop_i:
-; TODO need actual divide/remainder logic to use other widths
-  tya                     ; Transfer Y to A
-  and #$07                ; Mask lower 3 bits to check if multiple 8
-  cmp #$00                ; Check if ends in 0
-  bne draw_world_next_byte
-draw_world_carriage_return:
-  lda #$0D                ; Load CR character
-  jsr PUT_CHAR            ; Output newline
-draw_world_next_byte:
-  lda #$80                ; Set interating bit
-  sta ITERATING_BIT       ; Store in temporary variable
-  ldx #$08                ; Iterate 8 bits using X
-draw_world_loop_j:
-  lda ITERATING_BIT       ; Load current iterating bit
-  and (CURR_WORLD_L),y    ; Compare with world byte
-  bne draw_world_put_cell
-  lda #'.'                ; Print dead cell 
-  bne draw_world_put_bit
-draw_world_put_cell
-  lda #'#'                ; Print live cell
-draw_world_put_bit:
-  jsr PUT_CHAR            ; Output cell
-  lsr ITERATING_BIT       ; Shift iterating bit
-  dex
-  bne draw_world_loop_j
-  iny
-  cpy #WORLD_SIZE
-  bne draw_world_loop_i
-  ply
-  plx
-  pla
-  rts
-
-
-clear_world:
-  ldx #$00
-  lda #$00
-clear_world_loop:
-  sta WORLD_BUFFER_A,x
-  sta WORLD_BUFFER_B,x
-  inx
-  cpx #WORLD_SIZE
-  bne clear_world_loop
-  rts
-  
-random_spawn:
-  ldx #$00              ; Reset byte iterator
-random_spawn_loop_i:
-  lda #$01              ; Set interating bit
-  sta ITERATING_BIT     ; Store in temporary variable
-  ldy #$08              ; Iterate 8 bits using Y
-random_spawn_loop_j:
-  jsr GET_RANDOM_NUMBER
-  and #$7F              ; Mask random number to be positive (0-127)
-  cmp SPAWN_WEIGHT
-  bpl random_spawn_next ; If random number - weight is positive, do not spawn
-  lda ITERATING_BIT     ; Load iterating bit from memory
-  ora WORLD_BUFFER_A,x  ; OR-in current mask in world buffer-A byte
-  sta WORLD_BUFFER_A,x  ; Store new world byte in buffer A
-  sta WORLD_BUFFER_B,x  ; Store new world byte in buffer B
-random_spawn_next:
-  asl ITERATING_BIT     ; Shift iterating bit
-  dey
-  bne random_spawn_loop_j
-  inx                   ; Increment byte iterator
-  cpx #WORLD_SIZE       ; Check if in world bounds
-  bne random_spawn_loop_i
-  rts
-
-swap_world_buffer:
-  pha
-  phx
-  ; Swap active buffers
-  lda NEXT_WORLD_H ; Retrieve next high-byte
-  tax              ; Hold next high-byte in X
-  lda CURR_WORLD_H ; Retrieve current high-byte
-  sta NEXT_WORLD_H ; Store current high-byte as next high-byte
-  txa              ; Retrieve stored next high-byte
-  sta CURR_WORLD_H ; Store saved next high-byte as current byte
-  plx
-  pla
-  rts
-
   .org $0800
 main:
-  ; Init current world with 'Buffer A' address and next world with 'Buffer B'
-  lda #$00
-  sta CURR_WORLD_L
-  lda #$20
-  sta CURR_WORLD_H
-  lda #$00
-  sta NEXT_WORLD_L
-  lda #$21
-  sta NEXT_WORLD_H
-  ; Init refresh time
+ ; Init refresh time
   lda SYSTIME_0
   clc
   adc REFRESH_PERIOD ; Add period to current time
@@ -190,7 +98,7 @@ draw_clear_loop:
   jsr draw_world
   jsr next_gen
   jsr swap_world_buffer
-  ; Increment genration counter
+  ; Increment generation counter
   iny
   lda CONFIG_FLAGS
   and #INFINITE_GENERATIONS_FLAG
@@ -217,7 +125,6 @@ exit:
   jmp WOZMON_GETLINE
 
 ; Main program miscelaneous subroutines
-  .org $0860
 next_gen:
   pha
   phx
@@ -337,3 +244,93 @@ next_gen_right_bit_same_byte:
   inc NEIGHBOR_COUNT
 next_gen_count_byte_neighbors_exit
   rts
+; Internal subroutines
+draw_world:
+  pha
+  phx
+  phy
+  ldy #$00                ; Reset byte iterator
+draw_world_loop_i:
+; TODO need actual divide/remainder logic to use other widths
+  tya                     ; Transfer Y to A
+  and #$07                ; Mask lower 3 bits to check if multiple 8
+  cmp #$00                ; Check if ends in 0
+  bne draw_world_next_byte
+draw_world_carriage_return:
+  lda #$0D                ; Load CR character
+  jsr PUT_CHAR            ; Output newline
+draw_world_next_byte:
+  lda #$80                ; Set interating bit
+  sta ITERATING_BIT       ; Store in temporary variable
+  ldx #$08                ; Iterate 8 bits using X
+draw_world_loop_j:
+  lda ITERATING_BIT       ; Load current iterating bit
+  and (CURR_WORLD_L),y    ; Compare with world byte
+  bne draw_world_put_cell
+  lda #'.'                ; Print dead cell 
+  bne draw_world_put_bit
+draw_world_put_cell
+  lda #'#'                ; Print live cell
+draw_world_put_bit:
+  jsr PUT_CHAR            ; Output cell
+  lsr ITERATING_BIT       ; Shift iterating bit
+  dex
+  bne draw_world_loop_j
+  iny
+  cpy #WORLD_SIZE
+  bne draw_world_loop_i
+  ply
+  plx
+  pla
+  rts
+
+
+clear_world:
+  ldx #$00
+  lda #$00
+clear_world_loop:
+  sta WORLD_BUFFER_A,x
+  sta WORLD_BUFFER_B,x
+  inx
+  cpx #WORLD_SIZE
+  bne clear_world_loop
+  rts
+  
+random_spawn:
+  ldx #$00              ; Reset byte iterator
+random_spawn_loop_i:
+  lda #$01              ; Set interating bit
+  sta ITERATING_BIT     ; Store in temporary variable
+  ldy #$08              ; Iterate 8 bits using Y
+random_spawn_loop_j:
+  jsr GET_RANDOM_NUMBER
+  and #$7F              ; Mask random number to be positive (0-127)
+  cmp SPAWN_WEIGHT
+  bpl random_spawn_next ; If random number - weight is positive, do not spawn
+  lda ITERATING_BIT     ; Load iterating bit from memory
+  ora WORLD_BUFFER_A,x  ; OR-in current mask in world buffer-A byte
+  sta WORLD_BUFFER_A,x  ; Store new world byte in buffer A
+  sta WORLD_BUFFER_B,x  ; Store new world byte in buffer B
+random_spawn_next:
+  asl ITERATING_BIT     ; Shift iterating bit
+  dey
+  bne random_spawn_loop_j
+  inx                   ; Increment byte iterator
+  cpx #WORLD_SIZE       ; Check if in world bounds
+  bne random_spawn_loop_i
+  rts
+
+swap_world_buffer:
+  pha
+  phx
+  ; Swap active buffers
+  lda NEXT_WORLD_H ; Retrieve next high-byte
+  tax              ; Hold next high-byte in X
+  lda CURR_WORLD_H ; Retrieve current high-byte
+  sta NEXT_WORLD_H ; Store current high-byte as next high-byte
+  txa              ; Retrieve stored next high-byte
+  sta CURR_WORLD_H ; Store saved next high-byte as current byte
+  plx
+  pla
+  rts
+
