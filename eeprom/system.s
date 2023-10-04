@@ -149,6 +149,28 @@ put_char_delay_loop:
   pla
   rts
 
+  .org PUT_STRING
+put_string:
+  pha
+  lda PUT_STRING_L
+  pha
+  lda PUT_STRING_H
+  pha
+put_string_loop:
+  lda (PUT_STRING_L)
+  beq put_string_return
+  jsr put_char
+  inc PUT_STRING_L
+  bne put_string_loop
+  inc PUT_STRING_H
+  jmp put_string_loop
+put_string_return:
+  pla
+  sta PUT_STRING_H
+  pla
+  sta PUT_STRING_L
+  pla
+
   .org MEMCPY
 memcpy:
   pha
