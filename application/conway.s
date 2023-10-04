@@ -85,6 +85,11 @@ copy_world_main:
   jsr MEMCPY
   jmp WOZMON_GETLINE
 
+  .org $07F0
+  .asciiz "Generation: "
+  .org $07E8
+  .asciiz "Done."
+
   .org $0800
 main:
  ; Init refresh time
@@ -103,9 +108,12 @@ draw_clear_loop:
   jsr PUT_CHAR
   dex
   bne draw_clear_loop
-  ; Output generation
-  lda #'G'
-  jsr PUT_CHAR
+  ; Output generation string
+  lda #$F0
+  sta PUT_STRING_L
+  lda #$07
+  sta PUT_STRING_H
+  jsr PUT_STRING
   tya               ; Y is counting generation, transfer to A
   jsr WOZMON_PRBYTE ; TODO formalize 'native' put_byte call (avoid extra jsr at WOZMON_ECHO)
   ; Draw current world
@@ -132,9 +140,12 @@ exit:
   ; CR to move to next line
   lda #$0D
   jsr PUT_CHAR
-  ; Output 'D' to note progrm is done
-  lda #'D'
-  jsr PUT_CHAR
+  ; Output generation string
+  lda #$E8
+  sta PUT_STRING_L
+  lda #$07
+  sta PUT_STRING_H
+  jsr PUT_STRING
   ; Return to WOZMON
   jmp WOZMON_GETLINE
 
@@ -153,11 +164,11 @@ next_gen_loop_j:
   sta NEIGHBOR_COUNT       ; Reset neighbor counter
   ; Check current row neighbors
   lda BOOLEAN_FLAGS
+  pha                      ; Store previous set of flags
   ora #SKIP_CENTER_BIT     ; Set flag to skip center bit
   sta BOOLEAN_FLAGS
   jsr next_gen_count_byte_neighbors
-  lda BOOLEAN_FLAGS
-  and #~(SKIP_CENTER_BIT)  ; Clear flag to skip center bit
+  pla                      ; Restore previous set of flags
   sta BOOLEAN_FLAGS
   tya
   sec
@@ -230,7 +241,7 @@ next_gen_left_bit_same_byte:
   inc NEIGHBOR_COUNT
 next_gen_center_bit:
   lda BOOLEAN_FLAGS
-  and SKIP_CENTER_BIT
+  and #SKIP_CENTER_BIT
   bne next_gen_right_bit
   lda ITERATING_BIT
   and (CURR_WORLD_L),y     ; Compare to current bit

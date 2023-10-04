@@ -170,6 +170,7 @@ put_string_return:
   pla
   sta PUT_STRING_L
   pla
+  rts
 
   .org MEMCPY
 memcpy:
