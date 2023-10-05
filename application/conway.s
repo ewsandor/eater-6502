@@ -3,32 +3,34 @@
   include eeprom/definitions.s
 
 ; Run-time variabes
-CURR_WORLD_L    = $00   ; Pointer to active world buffer
-CURR_WORLD_H    = $01
-NEXT_WORLD_L    = $02   ; Pointer to next world buffer
-NEXT_WORLD_H    = $03
-ITERATING_BIT   = $04   ; Temporary variable for iterating 
-REFRESH_TIME    = $05   ; Time of next refresh
-NEIGHBOR_COUNT  = $06   ; Temporary variable to count neighboring cells
-BOOLEAN_FLAGS   = $07   ; Temporary boolean flags
+CURR_WORLD_L      = $00   ; Pointer to active world buffer
+CURR_WORLD_H      = $01
+NEXT_WORLD_L      = $02   ; Pointer to next world buffer
+NEXT_WORLD_H      = $03
+ITERATING_BIT     = $04   ; Temporary variable for iterating 
+REFRESH_TIME      = $05   ; Time of next refresh
+NEIGHBOR_COUNT    = $06   ; Temporary variable to count neighboring cells
+BOOLEAN_FLAGS     = $07   ; Temporary boolean flags
+CELL_POPULATION_L = $08   ; Counter for live cell population
+CELL_POPULATION_H = $09   ; Counter for live cell population
 ; Config Variables
-SPAWN_WEIGHT    = $0600 ; Threshold to spawn cell
-REFRESH_PERIOD  = $0601 ; Time between refreshes in seconds
-GENERATIONS     = $0602 ; Number of generations to simulate
-CONFIG_FLAGS    = $0603 ; Configuration flags
+SPAWN_WEIGHT      = $0600 ; Threshold to spawn cell
+REFRESH_PERIOD    = $0601 ; Time between refreshes in seconds
+GENERATIONS       = $0602 ; Number of generations to simulate
+CONFIG_FLAGS      = $0603 ; Configuration flags
 ; World Buffers
-WORLD_BUFFER_A  = $2000
-WORLD_BUFFER_B  = $2100
+WORLD_BUFFER_A    = $2000
+WORLD_BUFFER_B    = $2100
 
 ; Constants
-WORLD_WIDTH               = 8   ; 1/8th world width (each bit is one entry)
-WORLD_HEIGHT              = 31  ; Number of world rows
+WORLD_WIDTH               = 8    ; 1/8th world width (each bit is one entry)
+WORLD_HEIGHT              = 31   ; Number of world rows
 WORLD_SIZE                = (WORLD_WIDTH * WORLD_HEIGHT) ; World size in bytes
-DEFAULT_SPAWN_WEIGHT      = 32  ; 1/4 (32/128) bits set
-DEFAULT_REFRESH_PERIOD    = 5   ; Refresh every 5 seconds
-DEFAULT_GENERATIONS       = $08 ; Draw 8 generations
-INFINITE_GENERATIONS_FLAG = $01 ; Inifite generation flag
-SKIP_CENTER_BIT           = $01 ; Skip counting the center bit for this byte when counting neighbors
+DEFAULT_SPAWN_WEIGHT      = $7F  ; ~1/2 (127/255) bits set
+DEFAULT_REFRESH_PERIOD    = 5    ; Refresh every 5 seconds
+DEFAULT_GENERATIONS       = $08  ; Draw 8 generations
+INFINITE_GENERATIONS_FLAG = $01  ; Inifite generation flag
+SKIP_CENTER_BIT           = $01  ; Skip counting the center bit for this byte when counting neighbors
 
 ; Helper Routines
   .org $0700
@@ -85,10 +87,12 @@ copy_world_main:
   jsr MEMCPY
   jmp WOZMON_GETLINE
 
-  .org $07F0
-  .asciiz "Generation: "
+  .org $07D8
+  .asciiz "Population: "
   .org $07E8
   .asciiz "Done."
+  .org $07F0
+  .asciiz "Generation: "
 
   .org $0800
 main:
@@ -102,7 +106,7 @@ main:
   ; Start main loop
 main_loop:
   ; Clear the output
-  ldx #(WORLD_HEIGHT)
+  ldx #(WORLD_HEIGHT+2)
   lda #$0D
 draw_clear_loop:
   jsr PUT_CHAR
@@ -131,7 +135,7 @@ draw_clear_loop:
 refresh_time_wait:
   lda REFRESH_TIME
   cmp SYSTIME_0
-  bcs refresh_time_wait
+  bpl refresh_time_wait
   clc
   adc REFRESH_PERIOD
   sta REFRESH_TIME
@@ -156,6 +160,8 @@ next_gen:
   phy
   ldy #$00                 ; Reset byte iterator
 next_gen_loop_i:
+  lda #$00                 ; Clear byte in next generation's world
+  sta (NEXT_WORLD_L),y
   lda #$80                 ; Set interating bit
   sta ITERATING_BIT        ; Store in temporary variable
   ldx #$08                 ; Iterate 8 bits using X
@@ -189,19 +195,20 @@ next_gen_next_row:
   jsr next_gen_count_byte_neighbors
   ply
 next_gen_manage_fate;
+  ; Check if cell should respawn in new world
   lda NEIGHBOR_COUNT
   cmp #02                  ; Check if exactly 2 neighbors.
-  beq next_gen_next_bit    ; Any live cell with two or three live neighbours lives on to the next generation.
+  beq next_gen_clone_cell  ; Any live cell with two or three live neighbours lives on to the next generation.
   cmp #03                  ; Check if exactly 3 neighbors.  
   beq next_gen_spawn_cell  ; Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
   ; Any live cell with fewer than two live neighbours dies, as if by underpopulation.
   ; Any live cell with more than three live neighbours dies, as if by overpopulation.
-  ; Kill cell
-  lda ITERATING_BIT        ; Load iterating bit
-  eor #$FF                 ; Exclusive or $FF to invert bits
-  and (NEXT_WORLD_L),y     ; Clear bit from next generation
-  sta (NEXT_WORLD_L),y     ; Store updated byte
   jmp next_gen_next_bit
+next_gen_clone_cell:
+  ; Check if cell exists in current world
+  lda ITERATING_BIT
+  and (CURR_WORLD_L),y 
+  beq next_gen_next_bit    ; If cell is dead, do not respawn
 next_gen_spawn_cell:
   lda ITERATING_BIT
   ora (NEXT_WORLD_L),y     ; OR-in iterating bit
@@ -223,7 +230,10 @@ next_gen_count_byte_neighbors:
   lda ITERATING_BIT       ; Load current iterating bit
   cmp #$80                ; Check if MSB is being checked
   bne next_gen_left_bit_same_byte
+  ; Check if first byte of row (byte%8==0)
   tya
+  and #$07
+  cmp #$00
   beq next_gen_center_bit ; Continue to centr bit if Y is zero
   dey                     ; Fetch previous world byte
   lda (CURR_WORLD_L),y
@@ -252,7 +262,10 @@ next_gen_right_bit:
   lda ITERATING_BIT        ; Load current iterating bit
   cmp #$01                 ; Check if MSB is being checked
   bne next_gen_right_bit_same_byte
-  cpy #(WORLD_SIZE-1)      ; Check if last byte in world
+  ; Check if next byte is in next row (byte%8==7)
+  tya 
+  and #$07                 
+  cmp #$07
   beq next_gen_count_byte_neighbors_exit
   iny
   lda (CURR_WORLD_L),y     ; Fetch next byte
@@ -274,6 +287,9 @@ draw_world:
   pha
   phx
   phy
+  lda #$00                ; Reset population counter
+  sta CELL_POPULATION_L
+  sta CELL_POPULATION_H
   ldy #$00                ; Reset byte iterator
 draw_world_loop_i:
 ; TODO need actual divide/remainder logic to use other widths
@@ -294,8 +310,11 @@ draw_world_loop_j:
   bne draw_world_put_cell
   lda #'.'                ; Print dead cell 
   bne draw_world_put_bit
-draw_world_put_cell
+draw_world_put_cell:
   lda #'#'                ; Print live cell
+  inc CELL_POPULATION_L
+  bne draw_world_put_bit
+  inc CELL_POPULATION_H
 draw_world_put_bit:
   jsr PUT_CHAR            ; Output cell
   lsr ITERATING_BIT       ; Shift iterating bit
@@ -304,6 +323,18 @@ draw_world_put_bit:
   iny
   cpy #WORLD_SIZE
   bne draw_world_loop_i
+  ; Output population string
+  lda #$0D
+  jsr PUT_CHAR
+  lda #$D8
+  sta PUT_STRING_L
+  lda #$07
+  sta PUT_STRING_H
+  jsr PUT_STRING
+  lda CELL_POPULATION_H
+  jsr WOZMON_PRBYTE
+  lda CELL_POPULATION_L
+  jsr WOZMON_PRBYTE
   ply
   plx
   pla
@@ -329,9 +360,10 @@ random_spawn_loop_i:
   ldy #$08              ; Iterate 8 bits using Y
 random_spawn_loop_j:
   jsr GET_RANDOM_NUMBER
-  and #$7F              ; Mask random number to be positive (0-127)
   cmp SPAWN_WEIGHT
-  bpl random_spawn_next ; If random number - weight is positive, do not spawn
+  beq random_spawn_eq   ; Always spawn if equal so board can be 100% cells.  (Empty board impossible, but clear world subroutine exists)
+  bcs random_spawn_next ; If random number - weight is positive, do not spawn
+random_spawn_eq:
   lda ITERATING_BIT     ; Load iterating bit from memory
   ora WORLD_BUFFER_A,x  ; OR-in current mask in world buffer-A byte
   sta WORLD_BUFFER_A,x  ; Store new world byte in buffer A
