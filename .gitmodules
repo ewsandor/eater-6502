@@ -1,0 +1,3 @@
+[submodule "eeprom/msbasic"]
+	path = eeprom/msbasic
+	url = git@git.sandorlaboratories.com:edward/msbasic.git
