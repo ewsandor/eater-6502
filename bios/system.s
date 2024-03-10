@@ -1,6 +1,5 @@
 ; General System Functions
 
-
 .segment "IRQ"
 ; Interrupt Handler
 irqb: 
@@ -61,6 +60,7 @@ irq_exit:
 ; Reset Operations
 .segment "RESET"
 reset:
+.export RESET := reset
   sei                             ; Disable interrupts
   cld                             ; Clear decimal mode
   ; Init LEDs on PORTA
@@ -112,20 +112,24 @@ clear_zp_stack_loop:
 .segment "HALT"
 nmib: ; Non-Maskable Interrupts not expected, fall through to HALT Error
 halt_error:
+.export HALT_ERROR := halt_error
   lda #$E0 ; Output error code and halt
   bne halt_code
 halt:
+.export HALT := halt
   lda #$D0 ; Output done code and halt
   bne halt_code
 halt_code:
+.export HALT_CODE := halt_code
   sei           ; Disable any further interrupts
   sta VIA_PORTA ; Output code stored in A
 halt_loop:
   jmp halt_loop ; Remain in infinite do-nothing loop
 
-.segment "PUT_CHAR"
+.CODE
   ; System call to put character to both LCD and ACIA
 put_char:
+.export PUT_CHAR := put_char
   pha
   sta ACIA_DATA
   ; WDC 6551 TX register has a hardware bug.  Wait 1.042ms ($0412) for 9600 baud character
@@ -146,8 +150,8 @@ put_char_delay_loop:
   pla
   rts
 
-.segment "PUT_STRING"
 put_string:
+.export PUT_STRING := put_string
   pha
   lda PUT_STRING_L
   pha
@@ -169,8 +173,8 @@ put_string_return:
   pla
   rts
 
-.segment "MEMCPY"
 memcpy:
+.export MEMCPY := memcpy
   pha
   phy
   lda SYSTEM_TEMP_0
@@ -191,10 +195,10 @@ memcpy_return:
   rts
 
 
-.segment "GET_RANDOM_NUMBER"
 ; Borrowing Psuedo-random number generator from "Super Mario World" 
 ;    Thanks to 'Retro Game Mechanics Explained' (https://www.youtube.com/watch?v=q15yNrJHOak)
 get_random_number:
+.export GET_RANDOM_NUMBER := get_random_number
   phy
   ldy #$01
   jsr get_random_number_tick
@@ -206,7 +210,6 @@ get_random_number:
 
 
   ; Miscellaneous System Subroutines
-.segment "SYSTEM_MISC"
 lcd_init:
   lda #LCD_WRITE_DDR  ; Set first 7-bits (4-data + EN + RW + RS) of PORTB pins as output
   sta VIA_DDRB
@@ -251,6 +254,7 @@ lcd_init:
 
 
 delay_ticks:           ; Blocking delay (tick count set in DELAY_TICKS_L/H)
+.export DELAY_TICKS := delay_ticks
   pha
   lda DELAY_TICKS_L    ; Load lower-byte from memory
   sta VIA_T2CL         ; Write Timer-2 counter's lower-byte
@@ -428,6 +432,7 @@ acia_put_char:
 
 ; Blocking system call to get next char from input buffer
 get_char:
+.export GET_CHAR := get_char
   phx
   ldx INPUT_BUFFER_R      ; Load next read index
 get_char_wait_input:

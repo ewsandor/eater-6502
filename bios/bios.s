@@ -4,6 +4,7 @@
 
   .include "definitions.s"
   .include "system.s"
+  .include "syscall.s"
   .include "static_data.s"
   .include "wozmon.s"
 
