@@ -36,7 +36,7 @@ acia_rdrf_irq:
   cpx INPUT_BUFFER_R     ; Compare to to the read index
   bne acia_rdrf_irq_exit ; Skip to irq exit as long as read index != write inded (overflow)
   jmp halt_error         ; Halt with error on overflow
-acia_rdrf_irq_exit
+acia_rdrf_irq_exit:
   plx                    ; Restore X register
   jmp irq_exit
 via_irq:
@@ -297,7 +297,7 @@ lcd_write_instruction_nibble:
   sta VIA_PORTB ; Prepare nibble on PORTB
   ora #LCD_EN   ; Prepare nibble with enable flag
   sta VIA_PORTB ; Put nibble on PORTB
-  and #~(LCD_EN) ; Clear enable flag from A
+  and #<(~(LCD_EN)) ; Clear enable flag from A
   sta VIA_PORTB  ; Clear enable flag
   rts
 lcd_write_instruction: ; Write instruction stored in A register
@@ -359,7 +359,7 @@ lcd_put_char_nibble:
   sta VIA_PORTB           ; Prepare nibbe on PORTB
   ora #LCD_EN             ; Prepare nibble with enable flag
   sta VIA_PORTB           ; Put nibble on PORTB
-  and #~(LCD_EN | LCD_RS) ; Clear enable flag and RS
+  and #<(~(LCD_EN | LCD_RS)) ; Clear enable flag and RS
   sta VIA_PORTB           ; Clear enable flag and RS from PORTB
   rts
 lcd_put_char:

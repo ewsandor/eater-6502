@@ -81,7 +81,7 @@ wozmon_dig:
   asl
   asl
   ldx #$04           ; Shift count
-wozmon_hexshift
+wozmon_hexshift:
   asl                ; Hex digit left, MSB to carry
   rol WOZMON_L       ; Rotate into LSD.
   rol WOZMON_H       ; Rotate into MSD's.
@@ -112,7 +112,7 @@ wozmon_setadr:
   sta WOZMON_XAML-1, x ; And to 'XAM index'.
   dex
   bne wozmon_setadr    ; Loop unless X = 0
-wozmon_nxtprnt
+wozmon_nxtprnt:
   bne wozmon_prdata     ; NE means no address to print.
   lda #$0D              ; CR.
   jsr wozmon_echo       ; Output it.

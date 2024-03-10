@@ -1,9 +1,9 @@
 ; Root EEPROM file
 
-  include definitions.s
-  include system.s
-  include static_data.s
-  include wozmon.s
+  .include "definitions.s"
+  .include "system.s"
+  .include "static_data.s"
+  .include "wozmon.s"
 
 vector_table:
 ; Vector Table
