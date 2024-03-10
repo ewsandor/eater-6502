@@ -2,26 +2,6 @@
 
 ; Fixed Addresses
 
-; System Subroutines
-; System reset subroutine
-RESET             = $8100
-; System halt with error subroutine
-HALT_ERROR        = $8200
-; System halt with done subroutine
-HALT_DONE         = $8208
-; System halt with code (register A) subroutine
-HALT_CODE         = $8210
-; System routine to put char in register A
-PUT_CHAR          = $8220
-; System routine to put null-terminated string starting at PUT_STRING
-PUT_STRING        = $8240
-; Copy Y bytes from SYS_MEMCPY_SRC to SYS_MEMCPY_DEST.  Y==0 copies 256 bytes
-MEMCPY            = $8260
-; System utility to get a random number (output in A)
-GET_RANDOM_NUMBER = $9000
-; Miscellaneous system subroutines
-SYSTEM_MISC       = $D000
-
 ; 6522 VIA Registers
 VIA_PORTB    = $6000 ; Output/Input Register B (PORTB)
 VIA_PORTA    = $6001 ; Output/Input Register A (PORTA)

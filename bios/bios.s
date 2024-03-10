@@ -1,5 +1,7 @@
 ; Root EEPROM file
 
+  .feature org_per_seg
+
   .include "definitions.s"
   .include "system.s"
   .include "static_data.s"

@@ -109,23 +109,21 @@ clear_zp_stack_loop:
   ; Reset Complete
   jmp wozmon 
 
-  .org HALT_ERROR
+.segment "HALT"
 nmib: ; Non-Maskable Interrupts not expected, fall through to HALT Error
 halt_error:
   lda #$E0 ; Output error code and halt
   bne halt_code
-  .org HALT_DONE
 halt:
   lda #$D0 ; Output done code and halt
   bne halt_code
-  .org HALT_CODE
 halt_code:
   sei           ; Disable any further interrupts
   sta VIA_PORTA ; Output code stored in A
 halt_loop:
   jmp halt_loop ; Remain in infinite do-nothing loop
 
-  .org PUT_CHAR
+.segment "PUT_CHAR"
   ; System call to put character to both LCD and ACIA
 put_char:
   pha
@@ -148,7 +146,7 @@ put_char_delay_loop:
   pla
   rts
 
-  .org PUT_STRING
+.segment "PUT_STRING"
 put_string:
   pha
   lda PUT_STRING_L
@@ -171,7 +169,7 @@ put_string_return:
   pla
   rts
 
-  .org MEMCPY
+.segment "MEMCPY"
 memcpy:
   pha
   phy
@@ -193,7 +191,7 @@ memcpy_return:
   rts
 
 
-  .org GET_RANDOM_NUMBER
+.segment "GET_RANDOM_NUMBER"
 ; Borrowing Psuedo-random number generator from "Super Mario World" 
 ;    Thanks to 'Retro Game Mechanics Explained' (https://www.youtube.com/watch?v=q15yNrJHOak)
 get_random_number:
@@ -208,7 +206,7 @@ get_random_number:
 
 
   ; Miscellaneous System Subroutines
-  .org SYSTEM_MISC
+.segment "SYSTEM_MISC"
 lcd_init:
   lda #LCD_WRITE_DDR  ; Set first 7-bits (4-data + EN + RW + RS) of PORTB pins as output
   sta VIA_DDRB
