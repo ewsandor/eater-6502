@@ -2,3 +2,4 @@ foo
 *.bin
 *.o
 *.out
+*.lbl
