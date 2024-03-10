@@ -1,8 +1,7 @@
 ; General System Functions
 
-; Start of EEPROM
-  .org EEPROM_START_ADDRESS
 
+.segment "IRQ"
 ; Interrupt Handler
 irqb: 
   pha
@@ -60,7 +59,7 @@ irq_exit:
   rti
 
 ; Reset Operations
-  .org RESET
+.segment "RESET"
 reset:
   sei                             ; Disable interrupts
   cld                             ; Clear decimal mode

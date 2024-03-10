@@ -1,2 +1,4 @@
-*.out
+foo
+*.bin
 *.o
+*.out

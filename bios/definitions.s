@@ -1,17 +1,6 @@
 ; Common system definitions to be referenced by applications
 
 ; Fixed Addresses
-; Starting address of EEPROM
-EEPROM_START_ADDRESS=$8000
-; Starting address of static data block
-STATIC_DATA_ADDRESS =$E000
-; Non-Maskable Interrupt Vector Address
-NMIB_VECTOR         =$FFFA
-; Reset Vector Address
-RESB_VECTOR         =$FFFC
-; Interrupt Vector Address
-IRQB_VECTOR         =$FFFE
-
 
 ; System Subroutines
 ; System reset subroutine
@@ -32,12 +21,6 @@ MEMCPY            = $8260
 GET_RANDOM_NUMBER = $9000
 ; Miscellaneous system subroutines
 SYSTEM_MISC       = $D000
-; Starting address of WOZMON
-WOZMON            = $FF00
-WOZMON_GETLINE    = $FF1F
-WOZMON_PRBYTE     = $FFDC
-WOZMON_PRHEX      = $FFE5
-WOZMON_ECHO       = $FFEF
 
 ; 6522 VIA Registers
 VIA_PORTB    = $6000 ; Output/Input Register B (PORTB)

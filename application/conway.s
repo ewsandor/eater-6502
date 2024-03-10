@@ -1,6 +1,6 @@
 ; Implementation to run Conway's Game of Life simulations
 
-  include eeprom/definitions.s
+.include "bios_interface.s"
 
 ; Run-time variabes
 CURR_WORLD_L      = $00   ; Pointer to active world buffer
@@ -194,7 +194,7 @@ next_gen_next_row:
   tay
   jsr next_gen_count_byte_neighbors
   ply
-next_gen_manage_fate;
+next_gen_manage_fate:
   ; Check if cell should respawn in new world
   lda NEIGHBOR_COUNT
   cmp #02                  ; Check if exactly 2 neighbors.
@@ -280,7 +280,7 @@ next_gen_right_bit_same_byte:
   beq next_gen_count_byte_neighbors_exit ; Continue to center bit if not zero
   ; bit-to-right is set, increment neighbor count
   inc NEIGHBOR_COUNT
-next_gen_count_byte_neighbors_exit
+next_gen_count_byte_neighbors_exit:
   rts
 ; Internal subroutines
 draw_world:

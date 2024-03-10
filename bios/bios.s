@@ -5,11 +5,8 @@
   .include "static_data.s"
   .include "wozmon.s"
 
-vector_table:
+.segment "VECTOR_TABLE"
 ; Vector Table
-  .org NMIB_VECTOR
   .word nmib
-  .org RESB_VECTOR
   .word reset
-  .org IRQB_VECTOR
   .word irqb
