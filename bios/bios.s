@@ -3,13 +3,14 @@
   .feature org_per_seg
 
   .include "definitions.s"
-  .include "system.s"
   .include "syscall.s"
   .include "static_data.s"
-  .include "wozmon.s"
 
 .segment "VECTOR_TABLE"
+  .import NMIB
+  .import RESET_LBL
+  .import IRQB
 ; Vector Table
-  .word nmib
-  .word reset
-  .word irqb
+  .word NMIB
+  .word RESET_LBL
+  .word IRQB

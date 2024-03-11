@@ -1,8 +1,10 @@
+  .include "definitions.s"
 ; General System Functions
 
 .segment "IRQ"
 ; Interrupt Handler
 irqb: 
+.export IRQB := irqb
   pha
   lda VIA_IFR          ; Read VIA interrupt flag register
   bmi via_irq          ; Jump to sub-handler if 'any' flag set
@@ -60,7 +62,7 @@ irq_exit:
 ; Reset Operations
 .segment "RESET"
 reset:
-.export RESET := reset
+.export RESET_LBL := reset
   sei                             ; Disable interrupts
   cld                             ; Clear decimal mode
   ; Init LEDs on PORTA
@@ -107,20 +109,21 @@ clear_zp_stack_loop:
   ; Enable interrupts
   cli
   ; Reset Complete
-  jmp wozmon 
+  jmp WOZMON
 
 .segment "HALT"
 nmib: ; Non-Maskable Interrupts not expected, fall through to HALT Error
+.export NMIB := nmib
 halt_error:
-.export HALT_ERROR := halt_error
+.export HALT_ERROR_LBL := halt_error
   lda #$E0 ; Output error code and halt
   bne halt_code
 halt:
-.export HALT := halt
+.export HALT_LBL := halt
   lda #$D0 ; Output done code and halt
   bne halt_code
 halt_code:
-.export HALT_CODE := halt_code
+.export HALT_CODE_LBL := halt_code
   sei           ; Disable any further interrupts
   sta VIA_PORTA ; Output code stored in A
 halt_loop:
@@ -129,7 +132,7 @@ halt_loop:
 .CODE
   ; System call to put character to both LCD and ACIA
 put_char:
-.export PUT_CHAR := put_char
+.export PUT_CHAR_LBL := put_char
   pha
   sta ACIA_DATA
   ; WDC 6551 TX register has a hardware bug.  Wait 1.042ms ($0412) for 9600 baud character
@@ -151,7 +154,7 @@ put_char_delay_loop:
   rts
 
 put_string:
-.export PUT_STRING := put_string
+.export PUT_STRING_LBL := put_string
   pha
   lda PUT_STRING_L
   pha
@@ -174,7 +177,7 @@ put_string_return:
   rts
 
 memcpy:
-.export MEMCPY := memcpy
+.export MEMCPY_LBL := memcpy
   pha
   phy
   lda SYSTEM_TEMP_0
@@ -198,7 +201,7 @@ memcpy_return:
 ; Borrowing Psuedo-random number generator from "Super Mario World" 
 ;    Thanks to 'Retro Game Mechanics Explained' (https://www.youtube.com/watch?v=q15yNrJHOak)
 get_random_number:
-.export GET_RANDOM_NUMBER := get_random_number
+.export GET_RANDOM_NUMBER_LBL := get_random_number
   phy
   ldy #$01
   jsr get_random_number_tick
@@ -254,7 +257,7 @@ lcd_init:
 
 
 delay_ticks:           ; Blocking delay (tick count set in DELAY_TICKS_L/H)
-.export DELAY_TICKS := delay_ticks
+.export DELAY_TICKS_LBL := delay_ticks
   pha
   lda DELAY_TICKS_L    ; Load lower-byte from memory
   sta VIA_T2CL         ; Write Timer-2 counter's lower-byte
@@ -355,6 +358,7 @@ lcd_backspace:
   pla
   rts
 
+.import LCD_CHAR_MAPPING
 lcd_put_char_nibble:
   ora #LCD_RS             ; Set RS bit to write to data register
   sta VIA_PORTB           ; Prepare nibbe on PORTB
@@ -372,7 +376,7 @@ lcd_put_char:
   beq lcd_put_char_backspace
   phx
   tax
-  lda lcd_char_mapping,x
+  lda LCD_CHAR_MAPPING,x
   plx
   pha                     ; Push mapped char into nibbles
   lsr                     ; Logical shift right 4-bits to get upper nibble
@@ -432,7 +436,7 @@ acia_put_char:
 
 ; System routine get number of characters available from the input buffer (output in A)
 char_available:
-.export CHAR_AVAILABLE := char_available
+.export CHAR_AVAILABLE_LBL := char_available
   lda INPUT_BUFFER_W
   sec
   sbc INPUT_BUFFER_R
@@ -440,7 +444,7 @@ char_available:
 
 ; Blocking system call to get next char from input buffer
 get_char:
-.export GET_CHAR := get_char
+.export GET_CHAR_LBL := get_char
   phx
   ldx INPUT_BUFFER_R      ; Load next read index
 get_char_wait_input:
@@ -476,6 +480,7 @@ get_random_number_tick_label3:
 
 ; Copy SYS_MEMCPY_SIZE bytes from SYS_MEMCPY_SRC to SYS_MEMCPY_DEST
 memcpy_large:
+.export MEMCPY_LARGE_LBL := memcpy_large
   pha
   clc ; Clear carry flag
   ; Prepare working variable for sorce & destination addresses as well as size

@@ -1,8 +1,12 @@
+  .include "definitions.s"
 ; Adapted version of Steve Wozniak's Apple-I system monitor "WOZMON"
+
+.import PUT_CHAR_LBL
+.import GET_CHAR_LBL
 
 .segment "WOZMON"
 wozmon:
-.export WOZMON := wozmon
+.export WOZMON_LBL := wozmon
   cld               ; Cleardecimal arithmetic mode
   cli               ; Enable interrupts
   ldy #$7F          ; Mask for DSP data direction register.
@@ -27,7 +31,7 @@ wozmon_escape:
   lda #'\'
   jsr wozmon_echo
 wozmon_getline:
-.export WOZMON_GETLINE := wozmon_getline
+.export WOZMON_GETLINE_LBL := wozmon_getline
   lda #$0D          ; CR
   jsr wozmon_echo
   ldy #$01          ; Initialize text index
@@ -35,7 +39,7 @@ wozmon_backspace:
   dey
   bmi wozmon_getline
 wozmon_nextchar:
-  jsr get_char      ; LDA KBD CR
+  jsr GET_CHAR_LBL  ; LDA KBD CR
   nop               ; BPL NEXTCHAR
   nop
   nop               ; LDA KB
@@ -144,7 +148,7 @@ wozmon_mod8chk:
   and #$07              ;   For MOD 8 = 0
   bpl wozmon_nxtprnt    ; Always taken
 wozmon_prbyte:
-.export WOZMON_PRBYTE := wozmon_prbyte
+.export WOZMON_PRBYTE_LBL := wozmon_prbyte
   pha                   ; Save A for LSD
   lsr                   ; MSD to LSD position
   lsr
@@ -153,15 +157,15 @@ wozmon_prbyte:
   jsr wozmon_prhex      ; Output hex digit.
   pla
 wozmon_prhex:
-.export WOZMON_PRHEX := wozmon_prhex
+.export WOZMON_PRHEX_LBL := wozmon_prhex
   and #$0F              ; Mask LSD for hex print.
   ora #$30              ; "0".
   cmp #$3A              ; Digit?
   bcc wozmon_echo       ; Yes, output it.
   adc #$06              ; Add offset for letter.
 wozmon_echo:
-.export WOZMON_ECHO := wozmon_echo
-  jsr put_char          ; BIT DSP 
+.export WOZMON_ECHO_LBL := wozmon_echo
+  jsr PUT_CHAR_LBL      ; BIT DSP 
   rts                   ; Reorder to avoid unnessesary 'nops'
   nop                   ; BMI ECHO
   nop
