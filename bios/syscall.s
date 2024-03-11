@@ -17,17 +17,17 @@ syscall_extended:
 .segment "SYSCALL_VECTOR"
 syscall_vector_table:
 .word reset                ; $00
-.word halt_error           ; $01
-.word halt                 ; $02
+.word halt                 ; $01
+.word halt_error           ; $02
 .word halt_code            ; $03
 .word put_char             ; $04
 .word put_string           ; $05
-.word memcpy               ; $06
-.word get_random_number    ; $07
-.word delay_ticks          ; $08
-.word get_char             ; $09
-.word halt_error           ; $0A
-.word halt_error           ; $0B
+.word char_available       ; $06
+.word get_char             ; $07
+.word memcpy               ; $08
+.word memcpy_large         ; $09
+.word get_random_number    ; $0A
+.word delay_ticks          ; $0B
 .word halt_error           ; $0C
 .word halt_error           ; $0D
 .word halt_error           ; $0E

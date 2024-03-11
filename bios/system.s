@@ -430,6 +430,14 @@ acia_put_char:
   pla
   rts
 
+; System routine get number of characters available from the input buffer (output in A)
+char_available:
+.export CHAR_AVAILABLE := char_available
+  lda INPUT_BUFFER_W
+  sec
+  sbc INPUT_BUFFER_R
+  rts
+
 ; Blocking system call to get next char from input buffer
 get_char:
 .export GET_CHAR := get_char
