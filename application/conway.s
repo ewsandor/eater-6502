@@ -1,26 +1,49 @@
 ; Implementation to run Conway's Game of Life simulations
 
-.include "bios_interface.s"
+.include "bios_syscall.inc"
 
 ; Run-time variabes
-CURR_WORLD_L      = $00   ; Pointer to active world buffer
-CURR_WORLD_H      = $01
-NEXT_WORLD_L      = $02   ; Pointer to next world buffer
-NEXT_WORLD_H      = $03
-ITERATING_BIT     = $04   ; Temporary variable for iterating 
-REFRESH_TIME      = $05   ; Time of next refresh
-NEIGHBOR_COUNT    = $06   ; Temporary variable to count neighboring cells
-BOOLEAN_FLAGS     = $07   ; Temporary boolean flags
-CELL_POPULATION_L = $08   ; Counter for live cell population
-CELL_POPULATION_H = $09   ; Counter for live cell population
+.segment "ZPDATA"
+CURR_WORLD:
+  .res 2
+CURR_WORLD_L      = <CURR_WORLD   ; Pointer to active world buffer
+CURR_WORLD_H      = >CURR_WORLD
+NEXT_WORLD:
+  .res 2
+NEXT_WORLD_L      = <NEXT_WORLD   ; Pointer to next world buffer
+NEXT_WORLD_H      = >NEXT_WORLD
+
+ITERATING_BIT:   ; Temporary variable for iterating 
+  .res 1
+REFRESH_TIME:    ; Time of next refresh
+  .res 1
+NEIGHBOR_COUNT:  ; Temporary variable to count neighboring cells
+  .res 1
+BOOLEAN_FLAGS:   ; Temporary boolean flags
+  .res 1
+
+CELL_POPULATION:
+  .res 2
+CELL_POPULATION_L = <CELL_POPULATION   ; Counter for live cell population
+CELL_POPULATION_H = >CELL_POPULATION   ; Counter for live cell population
 ; Config Variables
-SPAWN_WEIGHT      = $0600 ; Threshold to spawn cell
-REFRESH_PERIOD    = $0601 ; Time between refreshes in seconds
-GENERATIONS       = $0602 ; Number of generations to simulate
-CONFIG_FLAGS      = $0603 ; Configuration flags
+
+.data
+SPAWN_WEIGHT:   ; Threshold to spawn cell
+  .res 1
+REFRESH_PERIOD: ; Time between refreshes in seconds
+  .res 1
+GENERATIONS:    ; Number of generations to simulate
+  .res 1
+CONFIG_FLAGS:   ; Configuration flags
+  .res 1
+
+.bss
 ; World Buffers
-WORLD_BUFFER_A    = $2000
-WORLD_BUFFER_B    = $2100
+WORLD_BUFFER_A:
+  .res $0100
+WORLD_BUFFER_B:
+  .res $0100
 
 ; Constants
 WORLD_WIDTH               = 8    ; 1/8th world width (each bit is one entry)
@@ -33,8 +56,9 @@ INFINITE_GENERATIONS_FLAG = $01  ; Inifite generation flag
 SKIP_CENTER_BIT           = $01  ; Skip counting the center bit for this byte when counting neighbors
 
 ; Helper Routines
-  .org $0700
+.code
 set_defaults_main:
+.export SET_DEFAULTS_MAIN := set_defaults_main
   lda #DEFAULT_SPAWN_WEIGHT
   sta SPAWN_WEIGHT
   lda #DEFAULT_REFRESH_PERIOD
@@ -57,24 +81,24 @@ set_defaults_main:
   sta SYS_RNG_SEED_H
   jmp WOZMON_GETLINE
 
-  .org $0730
 clear_world_main:
+.export CLEAR_WORLD_MAIN := clear_world_main
   jsr clear_world
   jmp WOZMON_GETLINE
 
-  .org $0740
 random_spawn_main:
+.export RANDOM_SPAWN_MAIN := random_spawn_main
   jsr clear_world
   jsr random_spawn
   jmp WOZMON_GETLINE
 
-  .org $0750
 draw_world_main:
+.export DRAW_WORLD_MAIN := draw_world_main
   jsr draw_world
   jmp WOZMON_GETLINE
 
-  .org $0760
 copy_world_main:
+.export COPY_WORLD_MAIN := copy_world_main
   lda CURR_WORLD_L
   sta SYS_MEMCPY_SRC_L
   lda CURR_WORLD_H
@@ -84,18 +108,18 @@ copy_world_main:
   lda NEXT_WORLD_H
   sta SYS_MEMCPY_DEST_H
   ldy #WORLD_SIZE
-  jsr MEMCPY
+  ldx MEMCPY
+  jsr SYSCALL
   jmp WOZMON_GETLINE
 
-  .org $07D8
+.rodata
   .asciiz "Population: "
-  .org $07E8
   .asciiz "Done."
-  .org $07F0
   .asciiz "Generation: "
 
-  .org $0800
+.code
 main:
+.export MAIN:=main
  ; Init refresh time
   lda SYSTIME_0
   clc
@@ -109,7 +133,10 @@ main_loop:
   ldx #(WORLD_HEIGHT+2)
   lda #$0D
 draw_clear_loop:
-  jsr PUT_CHAR
+  phx
+  ldx PUT_CHAR
+  jsr SYSCALL
+  plx
   dex
   bne draw_clear_loop
   ; Output generation string
@@ -117,7 +144,10 @@ draw_clear_loop:
   sta PUT_STRING_L
   lda #$07
   sta PUT_STRING_H
-  jsr PUT_STRING
+  phx
+  ldx PUT_STRING
+  jsr SYSCALL 
+  plx
   tya               ; Y is counting generation, transfer to A
   jsr WOZMON_PRBYTE ; TODO formalize 'native' put_byte call (avoid extra jsr at WOZMON_ECHO)
   ; Draw current world
@@ -143,13 +173,17 @@ refresh_time_wait:
 exit:
   ; CR to move to next line
   lda #$0D
-  jsr PUT_CHAR
+  phx
+  ldx PUT_CHAR
+  jsr SYSCALL
   ; Output generation string
   lda #$E8
   sta PUT_STRING_L
   lda #$07
   sta PUT_STRING_H
-  jsr PUT_STRING
+  ldx PUT_STRING
+  jsr SYSCALL
+  plx
   ; Return to WOZMON
   jmp WOZMON_GETLINE
 
@@ -299,7 +333,10 @@ draw_world_loop_i:
   bne draw_world_next_byte
 draw_world_carriage_return:
   lda #$0D                ; Load CR character
-  jsr PUT_CHAR            ; Output newline
+  phx
+  ldx PUT_CHAR
+  jsr SYSCALL             ; Output newline
+  plx
 draw_world_next_byte:
   lda #$80                ; Set interating bit
   sta ITERATING_BIT       ; Store in temporary variable
@@ -316,7 +353,10 @@ draw_world_put_cell:
   bne draw_world_put_bit
   inc CELL_POPULATION_H
 draw_world_put_bit:
-  jsr PUT_CHAR            ; Output cell
+  phx
+  ldx PUT_CHAR
+  jsr SYSCALL             ; Output cell
+  plx
   lsr ITERATING_BIT       ; Shift iterating bit
   dex
   bne draw_world_loop_j
@@ -325,12 +365,16 @@ draw_world_put_bit:
   bne draw_world_loop_i
   ; Output population string
   lda #$0D
-  jsr PUT_CHAR
+  phx
+  ldx PUT_CHAR
+  jsr SYSCALL
   lda #$D8
   sta PUT_STRING_L
   lda #$07
   sta PUT_STRING_H
-  jsr PUT_STRING
+  ldx PUT_STRING
+  jsr SYSCALL
+  plx
   lda CELL_POPULATION_H
   jsr WOZMON_PRBYTE
   lda CELL_POPULATION_L
@@ -359,7 +403,10 @@ random_spawn_loop_i:
   sta ITERATING_BIT     ; Store in temporary variable
   ldy #$08              ; Iterate 8 bits using Y
 random_spawn_loop_j:
-  jsr GET_RANDOM_NUMBER
+  phx
+  ldx GET_RANDOM_NUMBER
+  jsr SYSCALL
+  plx
   cmp SPAWN_WEIGHT
   beq random_spawn_eq   ; Always spawn if equal so board can be 100% cells.  (Empty board impossible, but clear world subroutine exists)
   bcs random_spawn_next ; If random number - weight is positive, do not spawn
